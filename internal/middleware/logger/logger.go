@@ -19,7 +19,6 @@ func New(log *slog.Logger) func(next http.Handler) http.Handler {
 				slog.String("path", r.URL.Path),
 				slog.String("host", r.Host),
 				slog.String("remote", r.RemoteAddr),
-				slog.String("ua", r.UserAgent()),
 				slog.String("request_id", middleware.GetReqID(r.Context())),
 			)
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)

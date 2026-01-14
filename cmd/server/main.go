@@ -1,74 +1,47 @@
 package main
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 
-	"github.com/d2cTool/rtmetrics/internal/config"
-	//"github.com/d2cTool/rtmetrics/internal/storage"
+	common "github.com/d2cTool/rtmetrics/internal/config/common"
+	config "github.com/d2cTool/rtmetrics/internal/config/server"
+	"github.com/d2cTool/rtmetrics/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	//saveCounter "github.com/d2cTool/rtmetrics/internal/handler/counter"
+	"github.com/d2cTool/rtmetrics/internal/handler/get"
+	"github.com/d2cTool/rtmetrics/internal/handler/html"
+	"github.com/d2cTool/rtmetrics/internal/handler/post"
 	mwLogger "github.com/d2cTool/rtmetrics/internal/middleware/logger"
-)
-
-const (
-	envLocal = "local"
-	envProd  = "prod"
 )
 
 func main() {
 	cfg := config.Load()
-	fmt.Println("config:", cfg) // TODO: remove only for debug
 
-	log := setupLogger(cfg.Env)
+	log := common.SetupLogger(cfg.Env)
 	log.Info("starting server", slog.String("env", cfg.Env))
 
-	//var storage MemStorage
+	storage := storage.New()
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(mwLogger.New(log))
-	router.Use(middleware.URLFormat)
 
-	//router.Post("/counter/{name}/{value}", saveCounter.New(log, storage))
-	//router.Post("/gauge/{name}/{value}", saveCounter.New(log, storage))
-	//router.Post("/", saveCounter.New(log, storage))
-	//
-	//router.Get("/value/counter/{name}", saveCounter.New(log, storage))
-	//router.Get("/value/gauge/{name}", saveCounter.New(log, storage))
-	//router.Get("/", saveCounter.New(log, storage))
+	router.Post("/{mtype}/{name}/{value}", post.New(log, storage))
+	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+
+	router.Get("/value/{mtype}/{name}", get.New(log, storage))
+	router.Get("/", html.New(log, storage))
+	router.Get("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	srv := &http.Server{
-		Addr:         cfg.Address,
-		Handler:      router,
-		ReadTimeout:  cfg.HTTPServer.Timeout,
-		WriteTimeout: cfg.HTTPServer.Timeout,
-		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
+		Addr:    cfg.Address,
+		Handler: router,
 	}
 	if err := srv.ListenAndServe(); err != nil {
-		log.Error("failed to start server")
+		log.Error("failed to start server", slog.String("error", err.Error()))
 	}
 
 	log.Error("server stopped")
-}
-
-func setupLogger(env string) *slog.Logger {
-	var log *slog.Logger
-
-	switch env {
-	case envLocal:
-		log = slog.New(
-			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
-		)
-	case envProd:
-		log = slog.New(
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}),
-		)
-	}
-
-	return log
 }
