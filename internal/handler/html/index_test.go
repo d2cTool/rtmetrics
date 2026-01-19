@@ -1,6 +1,7 @@
 package html
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -27,7 +28,7 @@ func newMockRepository() *mockRepository {
 	}
 }
 
-func (m *mockRepository) SaveCounter(name string, value int64) (int64, error) {
+func (m *mockRepository) SaveCounter(ctx context.Context, name string, value int64) (int64, error) {
 	if m.err != nil {
 		return 0, m.err
 	}
@@ -38,7 +39,7 @@ func (m *mockRepository) SaveCounter(name string, value int64) (int64, error) {
 	return m.counters[name], nil
 }
 
-func (m *mockRepository) SaveGauge(name string, value float64) (float64, error) {
+func (m *mockRepository) SaveGauge(ctx context.Context, name string, value float64) (float64, error) {
 	if m.err != nil {
 		return 0, m.err
 	}
@@ -49,7 +50,7 @@ func (m *mockRepository) SaveGauge(name string, value float64) (float64, error) 
 	return value, nil
 }
 
-func (m *mockRepository) GetCounter(name string) (int64, error) {
+func (m *mockRepository) GetCounter(ctx context.Context, name string) (int64, error) {
 	if m.err != nil {
 		return 0, m.err
 	}
@@ -60,7 +61,7 @@ func (m *mockRepository) GetCounter(name string) (int64, error) {
 	return value, nil
 }
 
-func (m *mockRepository) GetGauge(name string) (float64, error) {
+func (m *mockRepository) GetGauge(ctx context.Context, name string) (float64, error) {
 	if m.err != nil {
 		return 0, m.err
 	}
@@ -71,7 +72,7 @@ func (m *mockRepository) GetGauge(name string) (float64, error) {
 	return value, nil
 }
 
-func (m *mockRepository) GetAllCounters() (map[string]int64, error) {
+func (m *mockRepository) GetAllCounters(ctx context.Context) (map[string]int64, error) {
 	if m.getAllCountersErr != nil {
 		return nil, m.getAllCountersErr
 	}
@@ -81,7 +82,7 @@ func (m *mockRepository) GetAllCounters() (map[string]int64, error) {
 	return m.counters, nil
 }
 
-func (m *mockRepository) GetAllGauges() (map[string]float64, error) {
+func (m *mockRepository) GetAllGauges(ctx context.Context) (map[string]float64, error) {
 	if m.getAllGaugesErr != nil {
 		return nil, m.getAllGaugesErr
 	}

@@ -72,13 +72,13 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		counters, err := repo.GetAllCounters()
+		counters, err := repo.GetAllCounters(r.Context())
 		if err != nil {
 			log.Error("failed to get counters", slog.String("error", err.Error()))
 			counters = make(map[string]int64)
 		}
 
-		gauges, err := repo.GetAllGauges()
+		gauges, err := repo.GetAllGauges(r.Context())
 		if err != nil {
 			log.Error("failed to get gauges", slog.String("error", err.Error()))
 			gauges = make(map[string]float64)

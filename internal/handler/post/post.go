@@ -45,7 +45,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 				return
 			}
 
-			newValue, err := repo.SaveCounter(name, value)
+			newValue, err := repo.SaveCounter(r.Context(), name, value)
 			if err != nil {
 				log.Error("failed to save counter",
 					slog.String("error", err.Error()),
@@ -70,7 +70,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 				return
 			}
 
-			newValue, err := repo.SaveGauge(name, value)
+			newValue, err := repo.SaveGauge(r.Context(), name, value)
 			if err != nil {
 				log.Error("failed to save gauge",
 					slog.String("error", err.Error()),

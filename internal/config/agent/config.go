@@ -3,6 +3,8 @@ package config
 import (
 	"flag"
 	"time"
+
+	"github.com/d2cTool/rtmetrics/internal/config/common"
 )
 
 type AgentConfig struct {
@@ -13,7 +15,7 @@ type AgentConfig struct {
 }
 
 func Load() *AgentConfig {
-	var cfg = AgentConfig{Env: "local", Address: "localhost:8080", ReportInterval: 10 * time.Second, PollInterval: 2 * time.Second}
+	var cfg = AgentConfig{Env: common.EnvLocal, Address: "localhost:8080", ReportInterval: 10 * time.Second, PollInterval: 2 * time.Second}
 
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "server address")
 	flag.DurationVar(&cfg.ReportInterval, "r", 10*time.Second, "report interval")

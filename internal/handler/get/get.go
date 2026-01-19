@@ -33,7 +33,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 		resp := ""
 
 		if mtype == metrics.Counter {
-			value, err := repo.GetCounter(name)
+			value, err := repo.GetCounter(r.Context(), name)
 			if err != nil {
 				log.Error("failed to get counter",
 					slog.String("error", err.Error()),
@@ -46,7 +46,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 		}
 
 		if mtype == metrics.Gauge {
-			value, err := repo.GetGauge(name)
+			value, err := repo.GetGauge(r.Context(), name)
 			if err != nil {
 				log.Error("failed to get gauge",
 					slog.String("error", err.Error()),

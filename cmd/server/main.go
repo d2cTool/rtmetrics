@@ -36,8 +36,11 @@ func main() {
 	router.Get("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	srv := &http.Server{
-		Addr:    cfg.Address,
-		Handler: router,
+		Addr:         cfg.HttpServer.Address,
+		ReadTimeout:  cfg.HttpServer.ReadTimeout,
+		WriteTimeout: cfg.HttpServer.WriteTimeout,
+		IdleTimeout:  cfg.HttpServer.IdIdleTimeout,
+		Handler:      router,
 	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Error("failed to start server", slog.String("error", err.Error()))
