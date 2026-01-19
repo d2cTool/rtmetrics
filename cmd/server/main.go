@@ -39,7 +39,7 @@ func main() {
 		Addr:         cfg.HttpServer.Address,
 		ReadTimeout:  cfg.HttpServer.ReadTimeout,
 		WriteTimeout: cfg.HttpServer.WriteTimeout,
-		IdleTimeout:  cfg.HttpServer.IdIdleTimeout,
+		IdleTimeout:  cfg.HttpServer.IdleTimeout,
 		Handler:      router,
 	}
 	if err := srv.ListenAndServe(); err != nil {
