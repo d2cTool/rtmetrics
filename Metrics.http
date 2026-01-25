@@ -1,0 +1,119 @@
+### Variables
+@baseUrl = http://localhost:8080
+
+### ============================================
+### POST - Сохранение Counter
+### ============================================
+
+### Сохранение counter с валидным значением
+POST {{baseUrl}}/counter/testCounter/42.5
+
+### Сохранение counter с отрицательным значением
+POST {{baseUrl}}/counter/negativeCounter/-10.3
+
+### Сохранение counter с нулевым значением
+POST {{baseUrl}}/counter/zeroCounter/0
+
+### Сохранение counter с большим значением
+POST {{baseUrl}}/counter/largeCounter/999999.99
+
+### Сохранение counter с невалидным значением (должен вернуть 400)
+POST {{baseUrl}}/counter/invalidCounter/abc
+
+### ============================================
+### POST - Сохранение Gauge
+### ============================================
+
+### Сохранение gauge с валидным значением
+POST {{baseUrl}}/gauge/testGauge/100
+
+### Сохранение gauge с отрицательным значением
+POST {{baseUrl}}/gauge/negativeGauge/-50
+
+### Сохранение gauge с нулевым значением
+POST {{baseUrl}}/gauge/zeroGauge/0
+
+### Сохранение gauge с большим значением
+POST {{baseUrl}}/gauge/largeGauge/2147483647
+
+### Сохранение gauge с невалидным значением (должен вернуть 400)
+POST {{baseUrl}}/gauge/invalidGauge/abc
+
+### ============================================
+### GET - Получение Counter
+### ============================================
+
+### Получение существующего counter
+GET {{baseUrl}}/value/counter/testCounter
+
+### Получение несуществующего counter (должен вернуть 404)
+GET {{baseUrl}}/value/counter/nonExistentCounter
+
+### Получение counter с пустым именем (должен вернуть 404)
+GET {{baseUrl}}/value/counter/
+
+### ============================================
+### GET - Получение Gauge
+### ============================================
+
+### Получение существующего gauge
+GET {{baseUrl}}/value/gauge/testGauge
+
+### Получение несуществующего gauge (должен вернуть 404)
+GET {{baseUrl}}/value/gauge/nonExistentGauge
+
+### Получение gauge с пустым именем (должен вернуть 404)
+GET {{baseUrl}}/value/gauge/
+
+### ============================================
+### GET - HTML страница со всеми метриками
+### ============================================
+
+### Получение HTML страницы со всеми метриками
+GET {{baseUrl}}/
+
+### ============================================
+### Проверка обработки ошибок
+### ============================================
+
+### Неверный путь для POST (должен вернуть 404)
+POST {{baseUrl}}/unknown/path
+
+### Неверный путь для GET (должен вернуть 404)
+GET {{baseUrl}}/unknown/path
+
+### POST на корневой путь (должен вернуть 404)
+POST {{baseUrl}}/
+
+### ============================================
+### Последовательность тестов (сценарий)
+### ============================================
+
+### 1. Сохранить counter
+POST {{baseUrl}}/counter/scenarioCounter/10.5
+
+### 2. Получить сохраненный counter
+GET {{baseUrl}}/value/counter/scenarioCounter
+
+### 3. Сохранить gauge
+POST {{baseUrl}}/gauge/scenarioGauge/200
+
+### 4. Получить сохраненный gauge
+GET {{baseUrl}}/value/gauge/scenarioGauge
+
+### 5. Посмотреть все метрики на HTML странице
+GET {{baseUrl}}/
+
+### 6. Обновить counter (должен добавить значение)
+POST {{baseUrl}}/counter/scenarioCounter/5.2
+
+### 7. Получить обновленный counter
+GET {{baseUrl}}/value/counter/scenarioCounter
+
+### 8. Обновить gauge (должен заменить значение)
+POST {{baseUrl}}/gauge/scenarioGauge/300
+
+### 9. Получить обновленный gauge
+GET {{baseUrl}}/value/gauge/scenarioGauge
+
+###
