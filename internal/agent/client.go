@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -27,13 +26,10 @@ func NewClient(baseURL string, logger *slog.Logger) *Client {
 }
 
 func (c *Client) SendGauge(name string, value float64) error {
-	out, err := json.Marshal(m.NewGauge(name, value))
-	if err != nil {
-		return fmt.Errorf("failed to serialize gauge %s: %w", name, err)
-	}
+	body := m.NewGauge(name, value)
 	resp, err := c.client.R().
 		SetHeader("Content-Type", "application/json").
-		SetResult(&out).
+		SetBody(body).
 		Post("/update")
 
 	if err != nil {
@@ -49,13 +45,10 @@ func (c *Client) SendGauge(name string, value float64) error {
 }
 
 func (c *Client) SendCounter(name string, value int64) error {
-	out, err := json.Marshal(m.NewCounter(name, value))
-	if err != nil {
-		return fmt.Errorf("failed to serialize counter %s: %w", name, err)
-	}
+	body := m.NewCounter(name, value)
 	resp, err := c.client.R().
 		SetHeader("Content-Type", "application/json").
-		SetResult(&out).
+		SetBody(body).
 		Post("/update")
 
 	if err != nil {

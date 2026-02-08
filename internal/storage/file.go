@@ -4,15 +4,19 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	metrics "github.com/d2cTool/rtmetrics/internal/model"
 )
 
-// Snapshot — снимок метрик для сохранения на диск.
-type Snapshot struct {
-	Counters map[string]int64   `json:"counters"`
-	Gauges   map[string]float64 `json:"gauges"`
-}
-
-// Save записывает снимок в файл. Использует временный файл и переименование для атомарности.
+// Save записывает снимок в файл в формате массива метрик:
+//
+//	[
+//	  {"id":"LastGC","type":"gauge","value":1257894000000000000},
+//	  {"id":"NumGC","type":"counter","delta":42},
+//	  ...
+//	]
+//
+// Использует временный файл и переименование для атомарности.
 func Save(path string, counters map[string]int64, gauges map[string]float64) error {
 	if path == "" {
 		return nil
@@ -28,9 +32,17 @@ func Save(path string, counters map[string]int64, gauges map[string]float64) err
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 
+	items := make([]*metrics.Metrics, 0, len(counters)+len(gauges))
+	for id, v := range counters {
+		items = append(items, metrics.NewCounter(id, v))
+	}
+	for id, v := range gauges {
+		items = append(items, metrics.NewGauge(id, v))
+	}
+
 	enc := json.NewEncoder(tmp)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(Snapshot{Counters: counters, Gauges: gauges}); err != nil {
+	if err := enc.Encode(items); err != nil {
 		_ = tmp.Close()
 		return err
 	}
@@ -49,7 +61,7 @@ func Save(path string, counters map[string]int64, gauges map[string]float64) err
 	return nil
 }
 
-// Load читает снимок из файла. Если файл не существует, возвращает nil maps без ошибки.
+// Load читает снимок из файла (массив метрик). Если файл не существует, возвращает пустые maps без ошибки.
 func Load(path string) (counters map[string]int64, gauges map[string]float64, err error) {
 	counters = make(map[string]int64)
 	gauges = make(map[string]float64)
@@ -64,15 +76,24 @@ func Load(path string) (counters map[string]int64, gauges map[string]float64, er
 		}
 		return nil, nil, err
 	}
-	var snap Snapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
+	var items []*metrics.Metrics
+	if err := json.Unmarshal(data, &items); err != nil {
 		return nil, nil, err
 	}
-	if snap.Counters != nil {
-		counters = snap.Counters
-	}
-	if snap.Gauges != nil {
-		gauges = snap.Gauges
+	for _, m := range items {
+		if m == nil {
+			continue
+		}
+		switch m.MType {
+		case metrics.Counter:
+			if m.Delta != nil {
+				counters[m.ID] = *m.Delta
+			}
+		case metrics.Gauge:
+			if m.Value != nil {
+				gauges[m.ID] = *m.Value
+			}
+		}
 	}
 	return counters, gauges, nil
 }

@@ -194,8 +194,9 @@ func TestRunPeriodicSave_EmptyPath_ReturnsImmediately(t *testing.T) {
 }
 
 func TestRunPeriodicSave_WritesPeriodically(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "periodic.json")
+	// Файл в os.TempDir(), чтобы горутина RunPeriodicSave не блокировала очистку t.TempDir()
+	path := filepath.Join(os.TempDir(), "rtmetrics_periodic_test.json")
+	defer os.Remove(path)
 
 	cfg := testConfig(false, path, 5*time.Millisecond)
 	st := storage.New()
