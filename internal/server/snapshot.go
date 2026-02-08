@@ -9,7 +9,6 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/storage"
 )
 
-// RestoreIfNeeded загружает метрики из файла в хранилище, если включён Restore и задан путь.
 func RestoreIfNeeded(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Logger) {
 	if !cfg.Restore || cfg.FileStoragePath == "" {
 		return
@@ -30,7 +29,6 @@ func RestoreIfNeeded(cfg *config.ServerConfig, st *storage.MemStorage, log *slog
 	)
 }
 
-// SaveSnapshot сохраняет текущее состояние метрик в файл.
 func SaveSnapshot(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Logger) {
 	if cfg.FileStoragePath == "" {
 		return
@@ -45,8 +43,6 @@ func SaveSnapshot(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Lo
 	}
 }
 
-// RunPeriodicSave запускает фоновое сохранение с заданным интервалом. Блокирует горутину.
-// Вызывать в отдельной горутине: go server.RunPeriodicSave(cfg, st, log).
 func RunPeriodicSave(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Logger) {
 	if cfg.StoreInterval <= 0 || cfg.FileStoragePath == "" {
 		return

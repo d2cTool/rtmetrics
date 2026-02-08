@@ -64,10 +64,10 @@ func main() {
 	router.Get("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	srv := &http.Server{
-		Addr:         cfg.HttpServer.Address,
-		ReadTimeout:  cfg.HttpServer.ReadTimeout,
-		WriteTimeout: cfg.HttpServer.WriteTimeout,
-		IdleTimeout:  cfg.HttpServer.IdleTimeout,
+		Addr:         cfg.HTTPServer.Address,
+		ReadTimeout:  cfg.HTTPServer.ReadTimeout,
+		WriteTimeout: cfg.HTTPServer.WriteTimeout,
+		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
 		Handler:      router,
 	}
 

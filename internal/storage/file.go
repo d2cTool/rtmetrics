@@ -8,15 +8,6 @@ import (
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 )
 
-// Save записывает снимок в файл в формате массива метрик:
-//
-//	[
-//	  {"id":"LastGC","type":"gauge","value":1257894000000000000},
-//	  {"id":"NumGC","type":"counter","delta":42},
-//	  ...
-//	]
-//
-// Использует временный файл и переименование для атомарности.
 func Save(path string, counters map[string]int64, gauges map[string]float64) error {
 	if path == "" {
 		return nil
@@ -54,14 +45,12 @@ func Save(path string, counters map[string]int64, gauges map[string]float64) err
 		return err
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
-		// На Windows Rename не перезаписывает существующий файл
 		_ = os.Remove(path)
 		return os.Rename(tmpPath, path)
 	}
 	return nil
 }
 
-// Load читает снимок из файла (массив метрик). Если файл не существует, возвращает пустые maps без ошибки.
 func Load(path string) (counters map[string]int64, gauges map[string]float64, err error) {
 	counters = make(map[string]int64)
 	gauges = make(map[string]float64)

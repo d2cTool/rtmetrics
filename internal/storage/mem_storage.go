@@ -93,7 +93,6 @@ func (s *MemStorage) GetAllGauges(ctx context.Context) (map[string]float64, erro
 	return result, nil
 }
 
-// Restore заменяет текущее состояние хранилища загруженными данными.
 func (s *MemStorage) Restore(counters map[string]int64, gauges map[string]float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

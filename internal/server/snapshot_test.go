@@ -19,7 +19,7 @@ func testConfig(restore bool, path string, interval time.Duration) *config.Serve
 		Restore:         restore,
 		FileStoragePath: path,
 		StoreInterval:   interval,
-		HttpServer:      &config.HttpServerConfig{},
+		HTTPServer:      &config.HTTPServerConfig{},
 	}
 }
 
