@@ -6,7 +6,7 @@
 ### ============================================
 
 ### Сохранение counter с валидным значением
-POST {{baseUrl}}/counter/testCounter/42.5
+POST {{baseUrl}}/counter/testCounter/42
 
 ### Сохранение counter с отрицательным значением
 POST {{baseUrl}}/counter/negativeCounter/-10.3
@@ -38,6 +38,78 @@ POST {{baseUrl}}/gauge/largeGauge/2147483647
 
 ### Сохранение gauge с невалидным значением (должен вернуть 400)
 POST {{baseUrl}}/gauge/invalidGauge/abc
+
+### ============================================
+### POST /update - Сохранение метрики (JSON API)
+### ============================================
+
+### Update: сохранение counter (JSON)
+POST {{baseUrl}}/update
+Content-Type: application/json
+
+{"id": "jsonCounter", "type": "counter", "delta": 42}
+
+### Update: сохранение counter с накоплением (повторный запрос добавит delta)
+POST {{baseUrl}}/update
+Content-Type: application/json
+
+{"id": "jsonCounter", "type": "counter", "delta": 10}
+
+### Update: сохранение gauge (JSON)
+POST {{baseUrl}}/update
+Content-Type: application/json
+
+{"id": "jsonGauge", "type": "gauge", "value": 100.5}
+
+### Update: перезапись gauge (JSON)
+POST {{baseUrl}}/update
+Content-Type: application/json
+
+{"id": "jsonGauge", "type": "gauge", "value": 200.75}
+
+### Update без Content-Type (должен вернуть 415)
+POST {{baseUrl}}/update
+
+{"id": "x", "type": "counter", "delta": 1}
+
+### Update с невалидным JSON (должен вернуть 400)
+POST {{baseUrl}}/update
+Content-Type: application/json
+
+{invalid json}
+
+### ============================================
+### POST /value - Получение метрики (JSON API)
+### ============================================
+
+### Value: получить counter (JSON request/response)
+POST {{baseUrl}}/value
+Content-Type: application/json
+
+{"id": "jsonCounter", "type": "counter"}
+
+### Value: получить gauge (JSON request/response)
+POST {{baseUrl}}/value
+Content-Type: application/json
+
+{"id": "jsonGauge", "type": "gauge"}
+
+### Value: несуществующий counter (должен вернуть 404)
+POST {{baseUrl}}/value
+Content-Type: application/json
+
+{"id": "nonExistentJsonCounter", "type": "counter"}
+
+### Value: несуществующий gauge (должен вернуть 404)
+POST {{baseUrl}}/value
+Content-Type: application/json
+
+{"id": "nonExistentJsonGauge", "type": "gauge"}
+
+### Value без Content-Type (должен вернуть 415)
+POST {{baseUrl}}/value
+
+{"id": "jsonCounter", "type": "counter"}
 
 ### ============================================
 ### GET - Получение Counter
@@ -115,5 +187,45 @@ POST {{baseUrl}}/gauge/scenarioGauge/300
 
 ### 9. Получить обновленный gauge
 GET {{baseUrl}}/value/gauge/scenarioGauge
+
+### ============================================
+### Сценарий: JSON API (update + value)
+### ============================================
+
+### 1. Сохранить counter через /update
+POST {{baseUrl}}/update
+Content-Type: application/json
+
+{"id": "scenarioJsonCounter", "type": "counter", "delta": 100}
+
+### 2. Получить counter через /value (ответ — JSON с delta)
+POST {{baseUrl}}/value
+Content-Type: application/json
+
+{"id": "scenarioJsonCounter", "type": "counter"}
+
+### 3. Сохранить gauge через /update
+POST {{baseUrl}}/update
+Content-Type: application/json
+
+{"id": "scenarioJsonGauge", "type": "gauge", "value": 99.9}
+
+### 4. Получить gauge через /value (ответ — JSON с value)
+POST {{baseUrl}}/value
+Content-Type: application/json
+
+{"id": "scenarioJsonGauge", "type": "gauge"}
+
+### 5. Обновить counter через /update (накопление)
+POST {{baseUrl}}/update
+Content-Type: application/json
+
+{"id": "scenarioJsonCounter", "type": "counter", "delta": 50}
+
+### 6. Проверить накопленный counter через /value
+POST {{baseUrl}}/value
+Content-Type: application/json
+
+{"id": "scenarioJsonCounter", "type": "counter"}
 
 ###

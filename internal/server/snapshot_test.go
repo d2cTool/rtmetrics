@@ -1,0 +1,218 @@
+package server
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	config "github.com/d2cTool/rtmetrics/internal/config/server"
+	"github.com/d2cTool/rtmetrics/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func testConfig(restore bool, path string, interval time.Duration) *config.ServerConfig {
+	return &config.ServerConfig{
+		Restore:         restore,
+		FileStoragePath: path,
+		StoreInterval:   interval,
+		HttpServer:      &config.HttpServerConfig{},
+	}
+}
+
+func TestRestoreIfNeeded_SkipWhenRestoreFalse(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data.json")
+	require.NoError(t, storage.Save(path, map[string]int64{"a": 1}, map[string]float64{"b": 2}))
+
+	cfg := testConfig(false, path, time.Second)
+	st := storage.New()
+	log := defaultLogger()
+
+	RestoreIfNeeded(cfg, st, log)
+
+	ctx := context.Background()
+	counters, _ := st.GetAllCounters(ctx)
+	gauges, _ := st.GetAllGauges(ctx)
+	assert.Empty(t, counters)
+	assert.Empty(t, gauges)
+}
+
+func TestRestoreIfNeeded_SkipWhenPathEmpty(t *testing.T) {
+	cfg := testConfig(true, "", time.Second)
+	st := storage.New()
+	log := defaultLogger()
+
+	RestoreIfNeeded(cfg, st, log)
+	// не падает, хранилище пустое
+	ctx := context.Background()
+	counters, _ := st.GetAllCounters(ctx)
+	assert.Empty(t, counters)
+}
+
+func TestRestoreIfNeeded_FileNotExists_NoError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "missing.json")
+
+	cfg := testConfig(true, path, time.Second)
+	st := storage.New()
+	log := defaultLogger()
+
+	RestoreIfNeeded(cfg, st, log)
+
+	ctx := context.Background()
+	counters, _ := st.GetAllCounters(ctx)
+	gauges, _ := st.GetAllGauges(ctx)
+	assert.Empty(t, counters)
+	assert.Empty(t, gauges)
+}
+
+func TestRestoreIfNeeded_Success(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data.json")
+	countersIn := map[string]int64{"c1": 10, "c2": 20}
+	gaugesIn := map[string]float64{"g1": 1.5, "g2": 2.5}
+	require.NoError(t, storage.Save(path, countersIn, gaugesIn))
+
+	cfg := testConfig(true, path, time.Second)
+	st := storage.New()
+	log := defaultLogger()
+
+	RestoreIfNeeded(cfg, st, log)
+
+	ctx := context.Background()
+	counters, _ := st.GetAllCounters(ctx)
+	gauges, _ := st.GetAllGauges(ctx)
+	assert.Equal(t, countersIn, counters)
+	assert.Equal(t, gaugesIn, gauges)
+}
+
+func TestRestoreIfNeeded_InvalidFile_NoPanic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.json")
+	require.NoError(t, os.WriteFile(path, []byte("not json"), 0644))
+
+	cfg := testConfig(true, path, time.Second)
+	st := storage.New()
+	log := defaultLogger()
+
+	RestoreIfNeeded(cfg, st, log)
+
+	ctx := context.Background()
+	counters, _ := st.GetAllCounters(ctx)
+	assert.Empty(t, counters)
+}
+
+func TestSaveSnapshot_EmptyPath_NoOp(t *testing.T) {
+	cfg := testConfig(false, "", time.Second)
+	st := storage.New()
+	st.Restore(map[string]int64{"x": 1}, nil)
+	log := defaultLogger()
+
+	SaveSnapshot(cfg, st, log)
+	// не создаёт файл (проверяем, что в TempDir ничего не появилось)
+	dir := t.TempDir()
+	entries, _ := os.ReadDir(dir)
+	assert.Empty(t, entries)
+}
+
+func TestSaveSnapshot_Success(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.json")
+
+	cfg := testConfig(false, path, time.Second)
+	st := storage.New()
+	st.Restore(map[string]int64{"cnt": 42}, map[string]float64{"g": 3.14})
+	log := defaultLogger()
+
+	SaveSnapshot(cfg, st, log)
+
+	require.FileExists(t, path)
+	counters, gauges, err := storage.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int64{"cnt": 42}, counters)
+	assert.Equal(t, map[string]float64{"g": 3.14}, gauges)
+}
+
+func TestSaveSnapshot_EmptyStorage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.json")
+
+	cfg := testConfig(false, path, time.Second)
+	st := storage.New()
+	log := defaultLogger()
+
+	SaveSnapshot(cfg, st, log)
+
+	require.FileExists(t, path)
+	counters, gauges, err := storage.Load(path)
+	require.NoError(t, err)
+	assert.Empty(t, counters)
+	assert.Empty(t, gauges)
+}
+
+func TestRunPeriodicSave_ZeroInterval_ReturnsImmediately(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tick.json")
+
+	cfg := testConfig(false, path, 0)
+	st := storage.New()
+	st.Restore(map[string]int64{"x": 1}, nil)
+	log := defaultLogger()
+
+	done := make(chan struct{})
+	go func() {
+		RunPeriodicSave(cfg, st, log)
+		close(done)
+	}()
+	select {
+	case <-done:
+		// вернулся сразу
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("RunPeriodicSave should return immediately when interval is 0")
+	}
+}
+
+func TestRunPeriodicSave_EmptyPath_ReturnsImmediately(t *testing.T) {
+	cfg := testConfig(false, "", time.Millisecond)
+	st := storage.New()
+	log := defaultLogger()
+
+	done := make(chan struct{})
+	go func() {
+		RunPeriodicSave(cfg, st, log)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("RunPeriodicSave should return immediately when path is empty")
+	}
+}
+
+func TestRunPeriodicSave_WritesPeriodically(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "periodic.json")
+
+	cfg := testConfig(false, path, 5*time.Millisecond)
+	st := storage.New()
+	st.Restore(map[string]int64{"p": 7}, map[string]float64{"q": 11.0})
+	log := defaultLogger()
+
+	go RunPeriodicSave(cfg, st, log)
+
+	time.Sleep(20 * time.Millisecond)
+
+	require.FileExists(t, path)
+	counters, gauges, err := storage.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int64{"p": 7}, counters)
+	assert.Equal(t, map[string]float64{"q": 11.0}, gauges)
+}
+
+func defaultLogger() *slog.Logger {
+	return slog.Default()
+}
