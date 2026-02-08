@@ -13,6 +13,7 @@ import (
 	config "github.com/d2cTool/rtmetrics/internal/config/server"
 	"github.com/d2cTool/rtmetrics/internal/handler/update"
 	"github.com/d2cTool/rtmetrics/internal/handler/value"
+	"github.com/d2cTool/rtmetrics/internal/repository"
 	"github.com/d2cTool/rtmetrics/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -39,7 +40,11 @@ func main() {
 	st := storage.New()
 
 	server.RestoreIfNeeded(cfg, st, log)
-	if cfg.StoreInterval > 0 && cfg.FileStoragePath != "" {
+
+	var repo repository.MetricsRepository = st
+	if cfg.StoreInterval == 0 && cfg.FileStoragePath != "" {
+		repo = server.NewSyncSaveRepo(st, cfg, log)
+	} else if cfg.StoreInterval > 0 && cfg.FileStoragePath != "" {
 		go server.RunPeriodicSave(cfg, st, log)
 	}
 
@@ -48,14 +53,14 @@ func main() {
 	router.Use(logger.New(log))
 	router.Use(compress.New(log))
 
-	router.Post("/update", update.New(log, st))
-	router.Post("/value", value.New(log, st))
+	router.Post("/update", update.New(log, repo))
+	router.Post("/value", value.New(log, repo))
 
-	router.Post("/{mtype}/{name}/{value}", post.New(log, st))
+	router.Post("/{mtype}/{name}/{value}", post.New(log, repo))
 	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
-	router.Get("/value/{mtype}/{name}", get.New(log, st))
-	router.Get("/", html.New(log, st))
+	router.Get("/value/{mtype}/{name}", get.New(log, repo))
+	router.Get("/", html.New(log, repo))
 	router.Get("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	srv := &http.Server{

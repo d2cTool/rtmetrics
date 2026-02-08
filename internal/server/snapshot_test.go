@@ -154,6 +154,8 @@ func TestSaveSnapshot_EmptyStorage(t *testing.T) {
 	assert.Empty(t, gauges)
 }
 
+// При StoreInterval=0 периодическое сохранение не запускается — снимок пишется синхронно через SyncSaveRepo.
+// RunPeriodicSave при interval=0 сразу выходит и не пишет в файл.
 func TestRunPeriodicSave_ZeroInterval_ReturnsImmediately(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "tick.json")
@@ -170,10 +172,13 @@ func TestRunPeriodicSave_ZeroInterval_ReturnsImmediately(t *testing.T) {
 	}()
 	select {
 	case <-done:
-		// вернулся сразу
+		// при interval=0 не запускаем тикер — синхронная запись через SyncSaveRepo
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("RunPeriodicSave should return immediately when interval is 0")
 	}
+	// файл не создаётся — при interval=0 периодическое сохранение не используется
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestRunPeriodicSave_EmptyPath_ReturnsImmediately(t *testing.T) {
@@ -212,6 +217,126 @@ func TestRunPeriodicSave_WritesPeriodically(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]int64{"p": 7}, counters)
 	assert.Equal(t, map[string]float64{"q": 11.0}, gauges)
+}
+
+// --- SyncSaveRepo: при StoreInterval=0 снимок пишется синхронно после каждого Save ---
+
+func TestSyncSaveRepo_SaveCounter_WritesSnapshotImmediately(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sync_counter.json")
+
+	cfg := testConfig(false, path, 0)
+	st := storage.New()
+	log := defaultLogger()
+	repo := NewSyncSaveRepo(st, cfg, log)
+
+	ctx := context.Background()
+	_, err := repo.SaveCounter(ctx, "PollCount", 5)
+	require.NoError(t, err)
+
+	require.FileExists(t, path)
+	counters, gauges, err := storage.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int64{"PollCount": 5}, counters)
+	assert.Empty(t, gauges)
+}
+
+func TestSyncSaveRepo_SaveGauge_WritesSnapshotImmediately(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sync_gauge.json")
+
+	cfg := testConfig(false, path, 0)
+	st := storage.New()
+	log := defaultLogger()
+	repo := NewSyncSaveRepo(st, cfg, log)
+
+	ctx := context.Background()
+	_, err := repo.SaveGauge(ctx, "Alloc", 1024.5)
+	require.NoError(t, err)
+
+	require.FileExists(t, path)
+	counters, gauges, err := storage.Load(path)
+	require.NoError(t, err)
+	assert.Empty(t, counters)
+	assert.Equal(t, map[string]float64{"Alloc": 1024.5}, gauges)
+}
+
+func TestSyncSaveRepo_SaveCounterAndGauge_BothInSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sync_both.json")
+
+	cfg := testConfig(false, path, 0)
+	st := storage.New()
+	log := defaultLogger()
+	repo := NewSyncSaveRepo(st, cfg, log)
+
+	ctx := context.Background()
+	_, err := repo.SaveCounter(ctx, "N", 1)
+	require.NoError(t, err)
+	_, err = repo.SaveGauge(ctx, "G", 2.5)
+	require.NoError(t, err)
+
+	counters, gauges, err := storage.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int64{"N": 1}, counters)
+	assert.Equal(t, map[string]float64{"G": 2.5}, gauges)
+}
+
+func TestSyncSaveRepo_StoreIntervalNonZero_NoSnapshotOnSave(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "no_sync.json")
+
+	cfg := testConfig(false, path, 10*time.Second)
+	st := storage.New()
+	log := defaultLogger()
+	repo := NewSyncSaveRepo(st, cfg, log)
+
+	ctx := context.Background()
+	_, err := repo.SaveCounter(ctx, "X", 1)
+	require.NoError(t, err)
+
+	// при interval > 0 SyncSaveRepo не вызывает SaveSnapshot после Save
+	_, err = os.Stat(path)
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestSyncSaveRepo_EmptyPath_NoSnapshotOnSave(t *testing.T) {
+	cfg := testConfig(false, "", 0)
+	st := storage.New()
+	log := defaultLogger()
+	repo := NewSyncSaveRepo(st, cfg, log)
+
+	ctx := context.Background()
+	_, err := repo.SaveCounter(ctx, "X", 1)
+	require.NoError(t, err)
+	_, err = repo.SaveGauge(ctx, "Y", 1.0)
+	require.NoError(t, err)
+	// не падает, файл не создаётся (path пустой)
+}
+
+func TestSyncSaveRepo_ReadMethods_Passthrough(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "read.json")
+
+	cfg := testConfig(false, path, 0)
+	st := storage.New()
+	st.Restore(map[string]int64{"c": 10}, map[string]float64{"g": 3.14})
+	log := defaultLogger()
+	repo := NewSyncSaveRepo(st, cfg, log)
+
+	ctx := context.Background()
+	v, err := repo.GetCounter(ctx, "c")
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), v)
+
+	vf, err := repo.GetGauge(ctx, "g")
+	require.NoError(t, err)
+	assert.Equal(t, 3.14, vf)
+
+	counters, _ := repo.GetAllCounters(ctx)
+	gauges, _ := repo.GetAllGauges(ctx)
+	assert.Equal(t, map[string]int64{"c": 10}, counters)
+	assert.Equal(t, map[string]float64{"g": 3.14}, gauges)
 }
 
 func defaultLogger() *slog.Logger {
