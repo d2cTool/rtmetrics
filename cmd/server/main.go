@@ -4,8 +4,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	common "github.com/d2cTool/rtmetrics/internal/config/common"
+	"github.com/d2cTool/rtmetrics/internal/config/common"
 	config "github.com/d2cTool/rtmetrics/internal/config/server"
+	"github.com/d2cTool/rtmetrics/internal/handler/update"
+	"github.com/d2cTool/rtmetrics/internal/handler/value"
 	"github.com/d2cTool/rtmetrics/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,7 +15,8 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/handler/get"
 	"github.com/d2cTool/rtmetrics/internal/handler/html"
 	"github.com/d2cTool/rtmetrics/internal/handler/post"
-	mwLogger "github.com/d2cTool/rtmetrics/internal/middleware/logger"
+	"github.com/d2cTool/rtmetrics/internal/middleware/compress"
+	"github.com/d2cTool/rtmetrics/internal/middleware/logger"
 )
 
 func main() {
@@ -22,17 +25,22 @@ func main() {
 	log := common.SetupLogger(cfg.Env)
 	log.Info("starting server", slog.String("env", cfg.Env))
 
-	storage := storage.New()
+	st := storage.New()
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
-	router.Use(mwLogger.New(log))
+	router.Use(logger.New(log))
+	router.Use(compress.New(log))
 
-	router.Post("/{mtype}/{name}/{value}", post.New(log, storage))
+	router.Post("/update", update.New(log, st))
+	router.Post("/value", value.New(log, st))
+
+	router.Post("/{mtype}/{name}/{value}", post.New(log, st))
+	router.Post("/{mtype}/{name}/{value}", post.New(log, st))
 	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
-	router.Get("/value/{mtype}/{name}", get.New(log, storage))
-	router.Get("/", html.New(log, storage))
+	router.Get("/value/{mtype}/{name}", get.New(log, st))
+	router.Get("/", html.New(log, st))
 	router.Get("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	srv := &http.Server{

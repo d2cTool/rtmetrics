@@ -6,7 +6,7 @@ import (
 )
 
 type CountMetrics struct {
-	PollCount uint64
+	PollCount int64
 }
 
 type GaugeMetrics struct {
