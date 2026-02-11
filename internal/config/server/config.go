@@ -28,7 +28,7 @@ func Load() *ServerConfig {
 	var cfg = ServerConfig{Env: common.EnvLocal, HTTPServer: &httpSrv, StoreInterval: 1 * time.Second, FileStoragePath: "./data", Restore: false}
 
 	err := env.Parse(&cfg)
-	if err == nil {
+	if err == nil && cfg.HTTPServer.Address != "" {
 		return &cfg
 	}
 

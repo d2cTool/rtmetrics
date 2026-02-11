@@ -19,7 +19,7 @@ func Load() *AgentConfig {
 	var cfg = AgentConfig{Env: common.EnvLocal, Address: "localhost:8080", ReportInterval: 10 * time.Second, PollInterval: 2 * time.Second}
 
 	err := env.Parse(&cfg)
-	if err == nil {
+	if err == nil && cfg.Address != "" {
 		return &cfg
 	}
 
