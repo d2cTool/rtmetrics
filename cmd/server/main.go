@@ -32,6 +32,7 @@ func main() {
 	log := common.SetupLogger(cfg.Env)
 	log.Info("starting server",
 		slog.String("env", cfg.Env),
+		slog.String("address", cfg.HTTPServer.Address),
 		slog.Duration("store_interval", cfg.StoreInterval),
 		slog.String("file_storage_path", cfg.FileStoragePath),
 		slog.Bool("restore", cfg.Restore),
@@ -56,7 +57,7 @@ func main() {
 	router.Post("/update", update.New(log, repo))
 	router.Post("/value", value.New(log, repo))
 
-	router.Post("/update/{mtype}/{name}/{value}", post.New(log, repo))
+	router.Post("/{mtype}/{name}/{value}", post.New(log, repo))
 	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	router.Get("/value/{mtype}/{name}", get.New(log, repo))
