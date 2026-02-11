@@ -18,14 +18,15 @@ type AgentConfig struct {
 func Load() *AgentConfig {
 	var cfg = AgentConfig{Env: common.EnvLocal, Address: "localhost:8080", ReportInterval: 10 * time.Second, PollInterval: 2 * time.Second}
 
-	err := env.Parse(&cfg)
-	if err == nil {
-		return &cfg
-	}
-
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "server address")
 	flag.DurationVar(&cfg.ReportInterval, "r", 10*time.Second, "report interval")
 	flag.DurationVar(&cfg.PollInterval, "p", 2*time.Second, "poll interval")
 	flag.Parse()
+
+	err := env.Parse(&cfg)
+	if err != nil {
+		panic(err)
+	}
+
 	return &cfg
 }
