@@ -56,7 +56,7 @@ func main() {
 	router.Post("/update", update.New(log, repo))
 	router.Post("/value", value.New(log, repo))
 
-	router.Post("/{mtype}/{name}/{value}", post.New(log, repo))
+	router.Post("/update/{mtype}/{name}/{value}", post.New(log, repo))
 	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	router.Get("/value/{mtype}/{name}", get.New(log, repo))
