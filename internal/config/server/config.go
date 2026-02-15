@@ -17,7 +17,7 @@ type ServerConfig struct {
 }
 
 type HTTPServerConfig struct {
-	Address      string `env:"SERVER_ADDRESS"`
+	Address      string `env:"ADDRESS"`
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
