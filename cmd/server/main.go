@@ -54,8 +54,8 @@ func main() {
 	router.Use(logger.New(log))
 	router.Use(compress.New(log))
 
-	router.Post("/update", update.New(log, repo))
-	router.Post("/value", value.New(log, repo))
+	router.Post("/update/", update.New(log, repo))
+	router.Post("/value/", value.New(log, repo))
 
 	router.Post("/update/{mtype}/{name}/{value}", post.New(log, repo))
 	router.Post("/{mtype}/{name}/{value}", post.New(log, repo))
