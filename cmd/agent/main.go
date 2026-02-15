@@ -20,12 +20,12 @@ func main() {
 	log.Info("starting agent",
 		slog.String("env", cfg.Env),
 		slog.String("server_address", cfg.Address),
-		slog.Duration("poll_interval", cfg.PollInterval),
-		slog.Duration("report_interval", cfg.ReportInterval),
+		slog.Int("poll_interval", cfg.PollInterval),
+		slog.Int("report_interval", cfg.ReportInterval),
 	)
 
 	client := agent.NewClient("http://"+cfg.Address, log)
-	runner := agent.NewRunner(client, log, cfg.PollInterval, cfg.ReportInterval)
+	runner := agent.NewRunner(client, log, time.Duration(cfg.PollInterval)*time.Second, time.Duration(cfg.ReportInterval)*time.Second)
 
 	// Создаем контекст для graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

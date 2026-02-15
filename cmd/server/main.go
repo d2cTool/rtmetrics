@@ -33,7 +33,7 @@ func main() {
 	log.Info("starting server",
 		slog.String("env", cfg.Env),
 		slog.String("address", cfg.HTTPServer.Address),
-		slog.Duration("store_interval", cfg.StoreInterval),
+		slog.Int("store_interval", cfg.StoreInterval),
 		slog.String("file_storage_path", cfg.FileStoragePath),
 		slog.Bool("restore", cfg.Restore),
 	)

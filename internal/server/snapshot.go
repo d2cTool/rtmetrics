@@ -47,7 +47,7 @@ func RunPeriodicSave(cfg *config.ServerConfig, st *storage.MemStorage, log *slog
 	if cfg.StoreInterval <= 0 || cfg.FileStoragePath == "" {
 		return
 	}
-	ticker := time.NewTicker(cfg.StoreInterval)
+	ticker := time.NewTicker(time.Duration(cfg.StoreInterval) * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
 		SaveSnapshot(cfg, st, log)
