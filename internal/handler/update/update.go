@@ -1,10 +1,10 @@
 package update
 
 import (
+	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
@@ -43,7 +43,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 			return
 		}
 
-		resp := ""
+		var resp *metrics.Metrics
 
 		if req.MType == metrics.Counter {
 			if req.Delta == nil {
@@ -62,7 +62,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 				http.Error(w, "Failed to save counter", http.StatusInternalServerError)
 				return
 			}
-			resp = strconv.FormatInt(newValue, 10)
+			resp = &metrics.Metrics{ID: req.ID, MType: metrics.Counter, Delta: &newValue}
 		}
 
 		if req.MType == metrics.Gauge {
@@ -82,17 +82,25 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 				http.Error(w, "Failed to save gauge", http.StatusInternalServerError)
 				return
 			}
-			resp = strconv.FormatFloat(newValue, 'f', -1, 64)
+			resp = &metrics.Metrics{ID: req.ID, MType: metrics.Gauge, Value: &newValue}
 		}
 
 		log.Info("data saved",
 			slog.String("mtype", req.MType),
 			slog.String("name", req.ID),
-			slog.String("new_value", resp),
 		)
+
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(resp); err != nil {
+			log.Error("cannot encode response JSON body",
+				slog.String("error", err.Error()),
+			)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(resp))
+		w.Write(buf.Bytes())
 	}
 }

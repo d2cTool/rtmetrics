@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/assert"
@@ -102,8 +104,11 @@ func TestNew_UpdateCounter_Success(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "10", w.Body.String())
 	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+	var resp metrics.Metrics
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Delta)
+	assert.Equal(t, int64(10), *resp.Delta)
 	assert.Equal(t, int64(10), repo.counters["testCounter"])
 }
 
@@ -124,7 +129,10 @@ func TestNew_UpdateCounter_Accumulation(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "15", w.Body.String())
+	var resp metrics.Metrics
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Delta)
+	assert.Equal(t, int64(15), *resp.Delta)
 	assert.Equal(t, int64(15), repo.counters["testCounter"])
 }
 
@@ -144,7 +152,10 @@ func TestNew_UpdateGauge_Success(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "3.14", w.Body.String())
+	var resp metrics.Metrics
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Value)
+	assert.InDelta(t, 3.14, *resp.Value, 0.001)
 	assert.InDelta(t, 3.14, repo.gauges["testGauge"], 0.001)
 }
 
@@ -165,7 +176,10 @@ func TestNew_UpdateGauge_Overwrite(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "2.5", w.Body.String())
+	var resp metrics.Metrics
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Value)
+	assert.InDelta(t, 2.5, *resp.Value, 0.001)
 	assert.InDelta(t, 2.5, repo.gauges["testGauge"], 0.001)
 }
 
@@ -337,5 +351,8 @@ func TestNew_ContentTypeWithCharset_Accepted(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "7", w.Body.String())
+	var resp metrics.Metrics
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Delta)
+	assert.Equal(t, int64(7), *resp.Delta)
 }
