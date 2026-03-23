@@ -1,6 +1,7 @@
 package html
 
 import (
+	"bytes"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -89,14 +90,16 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 			Gauges:   gauges,
 		}
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-
-		if err := t.Execute(w, data); err != nil {
+		var buf bytes.Buffer
+		if err := t.Execute(&buf, data); err != nil {
 			log.Error("failed to execute template", slog.String("error", err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(buf.Bytes())
 
 		log.Info("html page rendered")
 	}

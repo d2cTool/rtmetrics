@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"strconv"
 
+	m "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -26,10 +26,11 @@ func NewClient(baseURL string, logger *slog.Logger) *Client {
 }
 
 func (c *Client) SendGauge(name string, value float64) error {
+	body := m.NewGauge(name, value)
 	resp, err := c.client.R().
-		SetPathParam("name", name).
-		SetPathParam("value", strconv.FormatFloat(value, 'f', -1, 64)).
-		Post("/gauge/{name}/{value}")
+		SetHeader("Content-Type", "application/json").
+		SetBody(body).
+		Post("/update")
 
 	if err != nil {
 		return fmt.Errorf("failed to send gauge %s: %w", name, err)
@@ -44,10 +45,11 @@ func (c *Client) SendGauge(name string, value float64) error {
 }
 
 func (c *Client) SendCounter(name string, value int64) error {
+	body := m.NewCounter(name, value)
 	resp, err := c.client.R().
-		SetPathParam("name", name).
-		SetPathParam("value", strconv.FormatInt(value, 10)).
-		Post("/counter/{name}/{value}")
+		SetHeader("Content-Type", "application/json").
+		SetBody(body).
+		Post("/update")
 
 	if err != nil {
 		return fmt.Errorf("failed to send counter %s: %w", name, err)
@@ -86,11 +88,20 @@ func (c *Client) SendGaugeMetrics(metrics GaugeMetrics) error {
 		}
 
 		if err != nil {
-			c.logger.Error("failed to send metric",
+			c.logger.Error("failed to send gauge metric",
 				slog.String("field", fieldName),
 				slog.String("error", err.Error()))
 		}
 	}
 
+	return nil
+}
+
+func (c *Client) SendCounterMetrics(metrics CountMetrics) error {
+	err := c.SendCounter("PollCount", metrics.PollCount)
+
+	if err != nil {
+		c.logger.Error("failed to send counter metric", "PollCount", slog.String("error", err.Error()))
+	}
 	return nil
 }

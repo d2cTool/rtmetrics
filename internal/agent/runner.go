@@ -82,12 +82,19 @@ func (r *Runner) updateMetrics() {
 
 func (r *Runner) sendCurrentMetrics() {
 	r.mu.RLock()
-	metrics := r.gauges
+	gaugeMetrics := r.gauges
+	counterMetrics := r.counters
 	r.mu.RUnlock()
 
-	if err := r.client.SendGaugeMetrics(metrics); err != nil {
-		r.logger.Error("failed to send metrics", slog.String("error", err.Error()))
+	if err := r.client.SendGaugeMetrics(gaugeMetrics); err != nil {
+		r.logger.Error("failed to send gauge metrics", slog.String("error", err.Error()))
 	} else {
-		r.logger.Debug("metrics sent successfully")
+		r.logger.Debug("gauge metrics sent successfully")
+	}
+
+	if err := r.client.SendCounterMetrics(counterMetrics); err != nil {
+		r.logger.Error("failed to send counter metrics", slog.String("error", err.Error()))
+	} else {
+		r.logger.Debug("counter metrics sent successfully")
 	}
 }

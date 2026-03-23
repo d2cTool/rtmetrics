@@ -92,3 +92,21 @@ func (s *MemStorage) GetAllGauges(ctx context.Context) (map[string]float64, erro
 	}
 	return result, nil
 }
+
+func (s *MemStorage) Restore(counters map[string]int64, gauges map[string]float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if counters != nil {
+		s.Counters = make(map[string]int64, len(counters))
+		for k, v := range counters {
+			s.Counters[k] = v
+		}
+	}
+	if gauges != nil {
+		s.Gauges = make(map[string]float64, len(gauges))
+		for k, v := range gauges {
+			s.Gauges[k] = v
+		}
+	}
+}

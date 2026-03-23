@@ -1,11 +1,19 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	common "github.com/d2cTool/rtmetrics/internal/config/common"
+	"github.com/d2cTool/rtmetrics/internal/config/common"
 	config "github.com/d2cTool/rtmetrics/internal/config/server"
+	"github.com/d2cTool/rtmetrics/internal/handler/update"
+	"github.com/d2cTool/rtmetrics/internal/handler/value"
+	"github.com/d2cTool/rtmetrics/internal/repository"
 	"github.com/d2cTool/rtmetrics/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,38 +21,81 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/handler/get"
 	"github.com/d2cTool/rtmetrics/internal/handler/html"
 	"github.com/d2cTool/rtmetrics/internal/handler/post"
-	mwLogger "github.com/d2cTool/rtmetrics/internal/middleware/logger"
+	"github.com/d2cTool/rtmetrics/internal/middleware/compress"
+	"github.com/d2cTool/rtmetrics/internal/middleware/logger"
+	"github.com/d2cTool/rtmetrics/internal/server"
 )
 
 func main() {
 	cfg := config.Load()
 
 	log := common.SetupLogger(cfg.Env)
-	log.Info("starting server", slog.String("env", cfg.Env))
+	log.Info("starting server",
+		slog.String("env", cfg.Env),
+		slog.String("address", cfg.HTTPServer.Address),
+		slog.Int("store_interval", cfg.StoreInterval),
+		slog.String("file_storage_path", cfg.FileStoragePath),
+		slog.Bool("restore", cfg.Restore),
+	)
 
-	storage := storage.New()
+	st := storage.New()
+
+	server.RestoreIfNeeded(cfg, st, log)
+
+	var repo repository.MetricsRepository = st
+	if cfg.StoreInterval == 0 && cfg.FileStoragePath != "" {
+		repo = server.NewSyncSaveRepo(st, cfg, log)
+	} else if cfg.StoreInterval > 0 && cfg.FileStoragePath != "" {
+		go server.RunPeriodicSave(cfg, st, log)
+	}
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
-	router.Use(mwLogger.New(log))
+	router.Use(logger.New(log))
+	router.Use(compress.New(log))
 
-	router.Post("/{mtype}/{name}/{value}", post.New(log, storage))
+	router.Post("/update", update.New(log, repo))
+	router.Post("/update/", update.New(log, repo))
+	router.Post("/value", value.New(log, repo))
+	router.Post("/value/", value.New(log, repo))
+
+	router.Post("/update/{mtype}/{name}/{value}", post.New(log, repo))
+	router.Post("/{mtype}/{name}/{value}", post.New(log, repo))
 	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
-	router.Get("/value/{mtype}/{name}", get.New(log, storage))
-	router.Get("/", html.New(log, storage))
+	router.Get("/value/{mtype}/{name}", get.New(log, repo))
+	router.Get("/", html.New(log, repo))
 	router.Get("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	srv := &http.Server{
-		Addr:         cfg.HttpServer.Address,
-		ReadTimeout:  cfg.HttpServer.ReadTimeout,
-		WriteTimeout: cfg.HttpServer.WriteTimeout,
-		IdleTimeout:  cfg.HttpServer.IdleTimeout,
+		Addr:         cfg.HTTPServer.Address,
+		ReadTimeout:  cfg.HTTPServer.ReadTimeout,
+		WriteTimeout: cfg.HTTPServer.WriteTimeout,
+		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
 		Handler:      router,
 	}
-	if err := srv.ListenAndServe(); err != nil {
-		log.Error("failed to start server", slog.String("error", err.Error()))
+
+	serverExited := make(chan error, 1)
+	go func() { serverExited <- srv.ListenAndServe() }()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-serverExited:
+		if err != nil && err != http.ErrServerClosed {
+			log.Error("failed to start server", slog.String("error", err.Error()))
+		}
+	case <-sigChan:
+		log.Info("shutdown signal received")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Error("server shutdown error", slog.String("error", err.Error()))
+		}
+		cancel()
+		<-serverExited
 	}
 
-	log.Error("server stopped")
+	server.SaveSnapshot(cfg, st, log)
+	log.Info("server stopped")
 }
