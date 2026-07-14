@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/assert"
@@ -91,7 +92,7 @@ func (m *mockRepository) GetAllGauges(ctx context.Context) (map[string]float64, 
 func TestNew_UpdateCounter_Success(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"testCounter","type":"counter","delta":10}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -116,7 +117,7 @@ func TestNew_UpdateCounter_Accumulation(t *testing.T) {
 	repo := newMockRepository()
 	repo.counters["testCounter"] = 5
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"testCounter","type":"counter","delta":10}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -139,7 +140,7 @@ func TestNew_UpdateCounter_Accumulation(t *testing.T) {
 func TestNew_UpdateGauge_Success(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"testGauge","type":"gauge","value":3.14}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -163,7 +164,7 @@ func TestNew_UpdateGauge_Overwrite(t *testing.T) {
 	repo := newMockRepository()
 	repo.gauges["testGauge"] = 1.0
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"testGauge","type":"gauge","value":2.5}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -186,7 +187,7 @@ func TestNew_UpdateGauge_Overwrite(t *testing.T) {
 func TestNew_MissingContentType_UnsupportedMediaType(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"counter","delta":1}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -204,7 +205,7 @@ func TestNew_MissingContentType_UnsupportedMediaType(t *testing.T) {
 func TestNew_InvalidContentType_UnsupportedMediaType(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"counter","delta":1}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -223,7 +224,7 @@ func TestNew_InvalidContentType_UnsupportedMediaType(t *testing.T) {
 func TestNew_InvalidJSON_BadRequest(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{invalid json`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -241,7 +242,7 @@ func TestNew_InvalidJSON_BadRequest(t *testing.T) {
 func TestNew_InvalidMetricType_BadRequest(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"invalid","delta":1}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -260,7 +261,7 @@ func TestNew_InvalidMetricType_BadRequest(t *testing.T) {
 func TestNew_CounterMissingDelta_BadRequest(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"counter"}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -279,7 +280,7 @@ func TestNew_CounterMissingDelta_BadRequest(t *testing.T) {
 func TestNew_GaugeMissingValue_BadRequest(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"gauge"}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -299,7 +300,7 @@ func TestNew_SaveCounter_RepositoryError_InternalServerError(t *testing.T) {
 	repo := newMockRepository()
 	repo.err = errors.New("repository error")
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"counter","delta":1}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -319,7 +320,7 @@ func TestNew_SaveGauge_RepositoryError_InternalServerError(t *testing.T) {
 	repo := newMockRepository()
 	repo.err = errors.New("repository error")
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"gauge","value":1.0}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))
@@ -338,7 +339,7 @@ func TestNew_SaveGauge_RepositoryError_InternalServerError(t *testing.T) {
 func TestNew_ContentTypeWithCharset_Accepted(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"testCounter","type":"counter","delta":7}`
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(body))

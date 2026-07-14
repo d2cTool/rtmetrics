@@ -9,6 +9,7 @@ import (
 
 	"github.com/d2cTool/rtmetrics/internal/handler/get"
 	"github.com/d2cTool/rtmetrics/internal/handler/update"
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/d2cTool/rtmetrics/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -21,11 +22,12 @@ import (
 func TestAgentServerIntegration(t *testing.T) {
 	log := slog.Default()
 	st := storage.New()
+	svc := service.New(st)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Post("/update", update.New(log, st))
-	r.Get("/value/{mtype}/{name}", get.New(log, st))
+	r.Post("/update", update.New(log, svc))
+	r.Get("/value/{mtype}/{name}", get.New(log, svc))
 
 	server := httptest.NewServer(r)
 	defer server.Close()

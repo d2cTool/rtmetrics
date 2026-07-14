@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/assert"
@@ -91,7 +92,7 @@ func TestNew_GetCounter_Success(t *testing.T) {
 	repo.counters["testCounter"] = 42
 
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/value/counter/testCounter", nil)
 	w := httptest.NewRecorder()
@@ -113,7 +114,7 @@ func TestNew_GetGauge_Success(t *testing.T) {
 	repo.gauges["testGauge"] = 3.14
 
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/testGauge", nil)
 	w := httptest.NewRecorder()
@@ -131,7 +132,7 @@ func TestNew_GetGauge_Success(t *testing.T) {
 func TestNew_InvalidMetricType(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/value/invalid/testName", nil)
 	w := httptest.NewRecorder()
@@ -149,7 +150,7 @@ func TestNew_InvalidMetricType(t *testing.T) {
 func TestNew_CounterNotFound(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/value/counter/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -167,7 +168,7 @@ func TestNew_CounterNotFound(t *testing.T) {
 func TestNew_GaugeNotFound(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -187,7 +188,7 @@ func TestNew_CounterZeroValue(t *testing.T) {
 	repo.counters["zeroCounter"] = 0
 
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/value/counter/zeroCounter", nil)
 	w := httptest.NewRecorder()
@@ -207,7 +208,7 @@ func TestNew_GaugeZeroValue(t *testing.T) {
 	repo.gauges["zeroGauge"] = 0.0
 
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/zeroGauge", nil)
 	w := httptest.NewRecorder()

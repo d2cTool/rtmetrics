@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/assert"
@@ -92,7 +93,7 @@ func TestNew_GetCounter_Success(t *testing.T) {
 	repo := newMockRepository()
 	repo.counters["testCounter"] = 42
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"testCounter","type":"counter"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -119,7 +120,7 @@ func TestNew_GetGauge_Success(t *testing.T) {
 	repo := newMockRepository()
 	repo.gauges["testGauge"] = 3.14
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"testGauge","type":"gauge"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -145,7 +146,7 @@ func TestNew_GetGauge_Success(t *testing.T) {
 func TestNew_MissingContentType_UnsupportedMediaType(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"counter"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -163,7 +164,7 @@ func TestNew_MissingContentType_UnsupportedMediaType(t *testing.T) {
 func TestNew_InvalidContentType_UnsupportedMediaType(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"counter"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -182,7 +183,7 @@ func TestNew_InvalidContentType_UnsupportedMediaType(t *testing.T) {
 func TestNew_InvalidJSON_BadRequest(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{invalid json`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -200,7 +201,7 @@ func TestNew_InvalidJSON_BadRequest(t *testing.T) {
 func TestNew_InvalidMetricType_BadRequest(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"x","type":"invalid"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -219,7 +220,7 @@ func TestNew_InvalidMetricType_BadRequest(t *testing.T) {
 func TestNew_CounterNotFound(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"nonexistent","type":"counter"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -238,7 +239,7 @@ func TestNew_CounterNotFound(t *testing.T) {
 func TestNew_GaugeNotFound(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"nonexistent","type":"gauge"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -258,7 +259,7 @@ func TestNew_ContentTypeWithCharset_Accepted(t *testing.T) {
 	repo := newMockRepository()
 	repo.counters["c"] = 1
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"c","type":"counter"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -281,7 +282,7 @@ func TestNew_GetCounter_ZeroValue(t *testing.T) {
 	repo := newMockRepository()
 	repo.counters["zeroCounter"] = 0
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"zeroCounter","type":"counter"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))
@@ -304,7 +305,7 @@ func TestNew_GetGauge_ZeroValue(t *testing.T) {
 	repo := newMockRepository()
 	repo.gauges["zeroGauge"] = 0.0
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	body := `{"id":"zeroGauge","type":"gauge"}`
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(body))

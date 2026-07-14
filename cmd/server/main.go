@@ -14,6 +14,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/handler/update"
 	"github.com/d2cTool/rtmetrics/internal/handler/value"
 	"github.com/d2cTool/rtmetrics/internal/repository"
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/d2cTool/rtmetrics/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -49,23 +50,9 @@ func main() {
 		go server.RunPeriodicSave(cfg, st, log)
 	}
 
-	router := chi.NewRouter()
-	router.Use(middleware.RequestID)
-	router.Use(logger.New(log))
-	router.Use(compress.New(log))
+	svc := service.New(repo)
 
-	router.Post("/update", update.New(log, repo))
-	router.Post("/update/", update.New(log, repo))
-	router.Post("/value", value.New(log, repo))
-	router.Post("/value/", value.New(log, repo))
-
-	router.Post("/update/{mtype}/{name}/{value}", post.New(log, repo))
-	router.Post("/{mtype}/{name}/{value}", post.New(log, repo))
-	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
-
-	router.Get("/value/{mtype}/{name}", get.New(log, repo))
-	router.Get("/", html.New(log, repo))
-	router.Get("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	router := createRouter(log, svc)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -98,4 +85,26 @@ func main() {
 
 	server.SaveSnapshot(cfg, st, log)
 	log.Info("server stopped")
+}
+
+func createRouter(log *slog.Logger, svc service.MetricsService) *chi.Mux {
+	router := chi.NewRouter()
+	router.Use(middleware.RequestID)
+	router.Use(logger.New(log))
+	router.Use(compress.New(log))
+
+	router.Post("/update", update.New(log, svc))
+	router.Post("/update/", update.New(log, svc))
+	router.Post("/value", value.New(log, svc))
+	router.Post("/value/", value.New(log, svc))
+
+	router.Post("/update/{mtype}/{name}/{value}", post.New(log, svc))
+	router.Post("/{mtype}/{name}/{value}", post.New(log, svc))
+	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+
+	router.Get("/value/{mtype}/{name}", get.New(log, svc))
+	router.Get("/", html.New(log, svc))
+	router.Get("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+
+	return router
 }

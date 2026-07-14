@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
-	"github.com/d2cTool/rtmetrics/internal/repository"
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
+func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.value.new"
 		log = log.With(
@@ -44,7 +44,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 		}
 
 		if req.MType == metrics.Counter {
-			value, err := repo.GetCounter(r.Context(), req.ID)
+			value, err := svc.GetCounter(r.Context(), req.ID)
 			if err != nil {
 				log.Error("failed to get counter",
 					slog.String("error", err.Error()),
@@ -57,7 +57,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 		}
 
 		if req.MType == metrics.Gauge {
-			value, err := repo.GetGauge(r.Context(), req.ID)
+			value, err := svc.GetGauge(r.Context(), req.ID)
 			if err != nil {
 				log.Error("failed to get gauge",
 					slog.String("error", err.Error()),

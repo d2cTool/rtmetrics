@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/d2cTool/rtmetrics/internal/repository"
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -15,7 +15,7 @@ type PageData struct {
 	Gauges   map[string]float64
 }
 
-func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
+func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	tmpl := `<!DOCTYPE html>
 <html>
 <head>
@@ -73,13 +73,13 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		counters, err := repo.GetAllCounters(r.Context())
+		counters, err := svc.GetAllCounters(r.Context())
 		if err != nil {
 			log.Error("failed to get counters", slog.String("error", err.Error()))
 			counters = make(map[string]int64)
 		}
 
-		gauges, err := repo.GetAllGauges(r.Context())
+		gauges, err := svc.GetAllGauges(r.Context())
 		if err != nil {
 			log.Error("failed to get gauges", slog.String("error", err.Error()))
 			gauges = make(map[string]float64)

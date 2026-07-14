@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/assert"
@@ -89,7 +90,7 @@ func (m *mockRepository) GetAllGauges(ctx context.Context) (map[string]float64, 
 func TestNew_SaveCounter_Success(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/counter/testCounter/10", nil)
 	w := httptest.NewRecorder()
@@ -110,7 +111,7 @@ func TestNew_SaveCounter_Accumulation(t *testing.T) {
 	repo := newMockRepository()
 	repo.counters["testCounter"] = 5
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/counter/testCounter/10", nil)
 	w := httptest.NewRecorder()
@@ -128,7 +129,7 @@ func TestNew_SaveCounter_Accumulation(t *testing.T) {
 func TestNew_SaveGauge_Success(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/gauge/testGauge/3.14", nil)
 	w := httptest.NewRecorder()
@@ -148,7 +149,7 @@ func TestNew_SaveGauge_Overwrite(t *testing.T) {
 	repo := newMockRepository()
 	repo.gauges["testGauge"] = 1.0
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/gauge/testGauge/2.5", nil)
 	w := httptest.NewRecorder()
@@ -167,7 +168,7 @@ func TestNew_SaveGauge_Overwrite(t *testing.T) {
 func TestNew_InvalidMetricType(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/invalid/testName/10", nil)
 	w := httptest.NewRecorder()
@@ -185,7 +186,7 @@ func TestNew_InvalidMetricType(t *testing.T) {
 func TestNew_InvalidCounterValue(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/counter/testCounter/invalid", nil)
 	w := httptest.NewRecorder()
@@ -203,7 +204,7 @@ func TestNew_InvalidCounterValue(t *testing.T) {
 func TestNew_InvalidGaugeValue(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/gauge/testGauge/invalid", nil)
 	w := httptest.NewRecorder()
@@ -222,7 +223,7 @@ func TestNew_CounterRepositoryError(t *testing.T) {
 	repo := newMockRepository()
 	repo.err = errors.New("repository error")
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/counter/testCounter/10", nil)
 	w := httptest.NewRecorder()
@@ -241,7 +242,7 @@ func TestNew_GaugeRepositoryError(t *testing.T) {
 	repo := newMockRepository()
 	repo.err = errors.New("repository error")
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/gauge/testGauge/3.14", nil)
 	w := httptest.NewRecorder()
@@ -259,7 +260,7 @@ func TestNew_GaugeRepositoryError(t *testing.T) {
 func TestNew_CounterNegativeValue(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/counter/testCounter/-5", nil)
 	w := httptest.NewRecorder()
@@ -277,7 +278,7 @@ func TestNew_CounterNegativeValue(t *testing.T) {
 func TestNew_GaugeNegativeValue(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodPost, "/gauge/testGauge/-3.14", nil)
 	w := httptest.NewRecorder()

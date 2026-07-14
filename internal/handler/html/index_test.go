@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -100,7 +101,7 @@ func TestNew_RenderWithData_Success(t *testing.T) {
 	repo.gauges["gauge2"] = 2.71
 
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -132,7 +133,7 @@ func TestNew_RenderWithData_Success(t *testing.T) {
 func TestNew_RenderEmptyData_Success(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -152,7 +153,7 @@ func TestNew_RenderWithCountersOnly(t *testing.T) {
 	repo := newMockRepository()
 	repo.counters["counter1"] = 42
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -175,7 +176,7 @@ func TestNew_RenderWithGaugesOnly(t *testing.T) {
 	repo := newMockRepository()
 	repo.gauges["gauge1"] = 1.5
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -199,7 +200,7 @@ func TestNew_RepositoryError_Counters(t *testing.T) {
 	repo.getAllCountersErr = errors.New("repository error")
 	repo.gauges["gauge1"] = 1.0
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -223,7 +224,7 @@ func TestNew_RepositoryError_Gauges(t *testing.T) {
 	repo.getAllGaugesErr = errors.New("repository error")
 	repo.counters["counter1"] = 10
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -247,7 +248,7 @@ func TestNew_RepositoryError_Both(t *testing.T) {
 	repo.getAllCountersErr = errors.New("repository error")
 	repo.getAllGaugesErr = errors.New("repository error")
 	log := slog.Default()
-	handler := New(log, repo)
+	handler := New(log, service.New(repo))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()

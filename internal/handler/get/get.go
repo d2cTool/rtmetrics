@@ -6,12 +6,12 @@ import (
 	"strconv"
 
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
-	"github.com/d2cTool/rtmetrics/internal/repository"
+	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
+func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.get.new"
 		log = log.With(
@@ -33,7 +33,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 		resp := ""
 
 		if mtype == metrics.Counter {
-			value, err := repo.GetCounter(r.Context(), name)
+			value, err := svc.GetCounter(r.Context(), name)
 			if err != nil {
 				log.Error("failed to get counter",
 					slog.String("error", err.Error()),
@@ -46,7 +46,7 @@ func New(log *slog.Logger, repo repository.MetricsRepository) http.HandlerFunc {
 		}
 
 		if mtype == metrics.Gauge {
-			value, err := repo.GetGauge(r.Context(), name)
+			value, err := svc.GetGauge(r.Context(), name)
 			if err != nil {
 				log.Error("failed to get gauge",
 					slog.String("error", err.Error()),
