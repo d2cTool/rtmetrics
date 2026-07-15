@@ -36,7 +36,7 @@ func SaveSnapshot(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Lo
 	ctx := context.Background()
 	counters, _ := st.GetAllCounters(ctx)
 	gauges, _ := st.GetAllGauges(ctx)
-	if err := storage.Save(cfg.FileStoragePath, counters, gauges); err != nil {
+	if err := storage.Save(ctx, cfg.FileStoragePath, counters, gauges); err != nil {
 		log.Error("failed to save metrics to file", slog.String("error", err.Error()), slog.String("path", cfg.FileStoragePath))
 	} else {
 		log.Debug("metrics saved to file", slog.String("path", cfg.FileStoragePath))
