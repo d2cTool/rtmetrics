@@ -1,6 +1,10 @@
 package repository
 
-import "context"
+import (
+	"context"
+
+	"github.com/d2cTool/rtmetrics/internal/model"
+)
 
 type MetricsRepository interface {
 	SaveCounter(ctx context.Context, name string, value int64) (int64, error)
@@ -11,4 +15,8 @@ type MetricsRepository interface {
 
 	GetAllCounters(ctx context.Context) (map[string]int64, error)
 	GetAllGauges(ctx context.Context) (map[string]float64, error)
+
+	// SaveBatch сохраняет набор метрик за одну операцию.
+	// counter суммируются, gauge перезаписываются.
+	SaveBatch(ctx context.Context, metrics []model.Metrics) error
 }

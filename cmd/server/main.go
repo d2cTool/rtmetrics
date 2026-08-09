@@ -15,6 +15,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/database"
 	"github.com/d2cTool/rtmetrics/internal/handler/ping"
 	"github.com/d2cTool/rtmetrics/internal/handler/update"
+	"github.com/d2cTool/rtmetrics/internal/handler/updates"
 	"github.com/d2cTool/rtmetrics/internal/handler/value"
 	"github.com/d2cTool/rtmetrics/internal/repository"
 	"github.com/d2cTool/rtmetrics/internal/service"
@@ -145,6 +146,8 @@ func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Ping
 
 	router.Post("/update", update.New(log, svc))
 	router.Post("/update/", update.New(log, svc))
+	router.Post("/updates", updates.New(log, svc))
+	router.Post("/updates/", updates.New(log, svc))
 	router.Post("/value", value.New(log, svc))
 	router.Post("/value/", value.New(log, svc))
 

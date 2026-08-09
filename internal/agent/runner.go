@@ -86,15 +86,14 @@ func (r *Runner) sendCurrentMetrics() {
 	counterMetrics := r.counters
 	r.mu.RUnlock()
 
-	if err := r.client.SendGaugeMetrics(gaugeMetrics); err != nil {
-		r.logger.Error("failed to send gauge metrics", slog.String("error", err.Error()))
-	} else {
-		r.logger.Debug("gauge metrics sent successfully")
+	batch := BuildBatch(gaugeMetrics, counterMetrics)
+	if len(batch) == 0 {
+		return
 	}
 
-	if err := r.client.SendCounterMetrics(counterMetrics); err != nil {
-		r.logger.Error("failed to send counter metrics", slog.String("error", err.Error()))
+	if err := r.client.SendBatch(batch); err != nil {
+		r.logger.Error("failed to send metrics batch", slog.String("error", err.Error()))
 	} else {
-		r.logger.Debug("counter metrics sent successfully")
+		r.logger.Debug("metrics batch sent successfully")
 	}
 }

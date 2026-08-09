@@ -89,6 +89,25 @@ func (m *mockRepository) GetAllGauges(ctx context.Context) (map[string]float64, 
 	return m.gauges, nil
 }
 
+func (m *mockRepository) SaveBatch(ctx context.Context, batch []metrics.Metrics) error {
+	if m.err != nil {
+		return m.err
+	}
+	for _, mt := range batch {
+		switch mt.MType {
+		case metrics.Counter:
+			if mt.Delta != nil {
+				m.counters[mt.ID] += *mt.Delta
+			}
+		case metrics.Gauge:
+			if mt.Value != nil {
+				m.gauges[mt.ID] = *mt.Value
+			}
+		}
+	}
+	return nil
+}
+
 func TestNew_UpdateCounter_Success(t *testing.T) {
 	repo := newMockRepository()
 	log := slog.Default()

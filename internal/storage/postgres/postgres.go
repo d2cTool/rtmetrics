@@ -69,6 +69,62 @@ func (s *Storage) SaveGauge(ctx context.Context, name string, value float64) (fl
 	return result, nil
 }
 
+func (s *Storage) SaveBatch(ctx context.Context, batch []metrics.Metrics) error {
+	const counterQuery = `
+		INSERT INTO metrics (id, mtype, delta)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id, mtype)
+		DO UPDATE SET delta = metrics.delta + EXCLUDED.delta`
+
+	const gaugeQuery = `
+		INSERT INTO metrics (id, mtype, value)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id, mtype)
+		DO UPDATE SET value = EXCLUDED.value`
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	counterStmt, err := tx.PrepareContext(ctx, counterQuery)
+	if err != nil {
+		return fmt.Errorf("prepare counter stmt: %w", err)
+	}
+	defer counterStmt.Close()
+
+	gaugeStmt, err := tx.PrepareContext(ctx, gaugeQuery)
+	if err != nil {
+		return fmt.Errorf("prepare gauge stmt: %w", err)
+	}
+	defer gaugeStmt.Close()
+
+	for _, m := range batch {
+		switch m.MType {
+		case metrics.Counter:
+			if m.Delta == nil {
+				continue
+			}
+			if _, err := counterStmt.ExecContext(ctx, m.ID, metrics.Counter, *m.Delta); err != nil {
+				return fmt.Errorf("save counter %q in batch: %w", m.ID, err)
+			}
+		case metrics.Gauge:
+			if m.Value == nil {
+				continue
+			}
+			if _, err := gaugeStmt.ExecContext(ctx, m.ID, metrics.Gauge, *m.Value); err != nil {
+				return fmt.Errorf("save gauge %q in batch: %w", m.ID, err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
 func (s *Storage) GetCounter(ctx context.Context, name string) (int64, error) {
 	const query = `SELECT delta FROM metrics WHERE id = $1 AND mtype = $2`
 

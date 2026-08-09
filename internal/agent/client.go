@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -60,6 +63,44 @@ func (c *Client) SendCounter(name string, value int64) error {
 	}
 
 	c.logger.Debug("counter sent", slog.String("name", name), slog.Int64("value", value))
+	return nil
+}
+
+// SendBatch отправляет пакет метрик на POST /updates/ в формате []Metrics,
+// сжимая тело запроса алгоритмом gzip. Пустые батчи не отправляются.
+func (c *Client) SendBatch(metrics []m.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	data, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics batch: %w", err)
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return fmt.Errorf("failed to gzip metrics batch: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	resp, err := c.client.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Content-Encoding", "gzip").
+		SetBody(buf.Bytes()).
+		Post("/updates/")
+
+	if err != nil {
+		return fmt.Errorf("failed to send metrics batch: %w", err)
+	}
+	if !resp.IsSuccess() {
+		return fmt.Errorf("unexpected status code %d for metrics batch", resp.StatusCode())
+	}
+
+	c.logger.Debug("metrics batch sent", slog.Int("count", len(metrics)))
 	return nil
 }
 

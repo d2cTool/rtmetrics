@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,6 +68,32 @@ func TestStorage_GetCounter_NotFound(t *testing.T) {
 
 	_, err := s.GetCounter(context.Background(), "missing")
 	require.Error(t, err)
+}
+
+func TestStorage_SaveBatch(t *testing.T) {
+	s, mock := newTestStorage(t)
+
+	delta := int64(5)
+	value := 3.14
+	batch := []metrics.Metrics{
+		{ID: "PollCount", MType: metrics.Counter, Delta: &delta},
+		{ID: "Alloc", MType: metrics.Gauge, Value: &value},
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectPrepare("INSERT INTO metrics")
+	mock.ExpectPrepare("INSERT INTO metrics")
+	mock.ExpectExec("INSERT INTO metrics").
+		WithArgs("PollCount", "counter", delta).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO metrics").
+		WithArgs("Alloc", "gauge", value).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err := s.SaveBatch(context.Background(), batch)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestStorage_GetAllGauges(t *testing.T) {

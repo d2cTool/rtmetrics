@@ -2,7 +2,10 @@ package agent
 
 import (
 	"math/rand"
+	"reflect"
 	"runtime"
+
+	m "github.com/d2cTool/rtmetrics/internal/model"
 )
 
 type CountMetrics struct {
@@ -74,4 +77,22 @@ func Collect() GaugeMetrics {
 		TotalAlloc:    float64(m.TotalAlloc),
 		RandomValue:   rand.Float64(),
 	}
+}
+
+// BuildBatch формирует пакет метрик для отправки на /updates/:
+// все gauge-поля структуры + счётчик PollCount.
+func BuildBatch(gauges GaugeMetrics, counters CountMetrics) []m.Metrics {
+	v := reflect.ValueOf(gauges)
+	t := v.Type()
+
+	batch := make([]m.Metrics, 0, v.NumField()+1)
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		if field.Kind() != reflect.Float64 || !field.CanInterface() {
+			continue
+		}
+		batch = append(batch, *m.NewGauge(t.Field(i).Name, field.Float()))
+	}
+	batch = append(batch, *m.NewCounter("PollCount", counters.PollCount))
+	return batch
 }
