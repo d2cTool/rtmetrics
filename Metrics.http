@@ -2,6 +2,13 @@
 @baseUrl = http://localhost:8080
 
 ### ============================================
+### GET /ping - Проверка соединения с БД
+### ============================================
+
+### Ping: 200 OK при доступной БД, 500 при ошибке соединения / если БД не настроена
+GET {{baseUrl}}/ping
+
+### ============================================
 ### POST - Сохранение Counter
 ### ============================================
 
@@ -77,6 +84,65 @@ POST {{baseUrl}}/update
 Content-Type: application/json
 
 {invalid json}
+
+### ============================================
+### POST /updates/ - Пакетное сохранение метрик (JSON API)
+### ============================================
+
+### Updates: сохранение пакета метрик ([]Metrics)
+POST {{baseUrl}}/updates/
+Content-Type: application/json
+
+[
+  {"id": "batchCounter", "type": "counter", "delta": 5},
+  {"id": "batchCounter", "type": "counter", "delta": 3},
+  {"id": "batchGauge", "type": "gauge", "value": 3.14},
+  {"id": "batchGauge2", "type": "gauge", "value": 42.5}
+]
+
+### Updates: без завершающего слеша (обратная совместимость роутинга)
+POST {{baseUrl}}/updates
+Content-Type: application/json
+
+[
+  {"id": "PollCount", "type": "counter", "delta": 1},
+  {"id": "Alloc", "type": "gauge", "value": 12345.67}
+]
+
+### Updates: пустой пакет (no-op, должен вернуть 200)
+POST {{baseUrl}}/updates/
+Content-Type: application/json
+
+[]
+
+### Updates: без Content-Type (должен вернуть 415)
+POST {{baseUrl}}/updates/
+
+[{"id": "x", "type": "counter", "delta": 1}]
+
+### Updates: невалидный тип метрики (должен вернуть 400)
+POST {{baseUrl}}/updates/
+Content-Type: application/json
+
+[{"id": "x", "type": "invalid"}]
+
+### Updates: counter без delta (должен вернуть 400)
+POST {{baseUrl}}/updates/
+Content-Type: application/json
+
+[{"id": "x", "type": "counter"}]
+
+### Updates: невалидный JSON (должен вернуть 400)
+POST {{baseUrl}}/updates/
+Content-Type: application/json
+
+{invalid json}
+
+### Updates: проверить накопленный batchCounter (5 + 3 = 8)
+POST {{baseUrl}}/value
+Content-Type: application/json
+
+{"id": "batchCounter", "type": "counter"}
 
 ### ============================================
 ### POST /value - Получение метрики (JSON API)

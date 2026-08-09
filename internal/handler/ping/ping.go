@@ -9,14 +9,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// Pinger — минимальный интерфейс проверки доступности хранилища.
-// Его реализует *sql.DB, поэтому хендлер не завязан на конкретный драйвер.
 type Pinger interface {
 	PingContext(ctx context.Context) error
 }
 
-// New возвращает обработчик GET /ping: 200 OK при доступной БД,
-// 500 Internal Server Error — при ошибке соединения или если БД не настроена.
 func New(log *slog.Logger, db Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.ping.new"

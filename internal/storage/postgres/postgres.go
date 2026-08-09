@@ -6,24 +6,24 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"net"
 
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/repository"
+	"github.com/d2cTool/rtmetrics/internal/retry"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
 )
 
-// Проверка, что *Storage реализует repository.MetricsRepository.
 var _ repository.MetricsRepository = (*Storage)(nil)
 
-//go:embed migrations/*.sql
 var embedMigrations embed.FS
 
-// Storage — реализация repository.MetricsRepository поверх PostgreSQL.
 type Storage struct {
 	db *sql.DB
 }
 
-// New создаёт хранилище и применяет миграции схемы БД.
 func New(ctx context.Context, db *sql.DB) (*Storage, error) {
 	if err := migrate(ctx, db); err != nil {
 		return nil, fmt.Errorf("apply migrations: %w", err)
@@ -39,6 +39,18 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	return goose.UpContext(ctx, db, "migrations")
 }
 
+func isRetriable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgerrcode.IsConnectionException(pgErr.Code)
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
 func (s *Storage) SaveCounter(ctx context.Context, name string, value int64) (int64, error) {
 	const query = `
 		INSERT INTO metrics (id, mtype, delta)
@@ -48,7 +60,10 @@ func (s *Storage) SaveCounter(ctx context.Context, name string, value int64) (in
 		RETURNING delta`
 
 	var result int64
-	if err := s.db.QueryRowContext(ctx, query, name, metrics.Counter, value).Scan(&result); err != nil {
+	err := retry.Do(ctx, isRetriable, func() error {
+		return s.db.QueryRowContext(ctx, query, name, metrics.Counter, value).Scan(&result)
+	})
+	if err != nil {
 		return 0, fmt.Errorf("save counter %q: %w", name, err)
 	}
 	return result, nil
@@ -63,13 +78,22 @@ func (s *Storage) SaveGauge(ctx context.Context, name string, value float64) (fl
 		RETURNING value`
 
 	var result float64
-	if err := s.db.QueryRowContext(ctx, query, name, metrics.Gauge, value).Scan(&result); err != nil {
+	err := retry.Do(ctx, isRetriable, func() error {
+		return s.db.QueryRowContext(ctx, query, name, metrics.Gauge, value).Scan(&result)
+	})
+	if err != nil {
 		return 0, fmt.Errorf("save gauge %q: %w", name, err)
 	}
 	return result, nil
 }
 
 func (s *Storage) SaveBatch(ctx context.Context, batch []metrics.Metrics) error {
+	return retry.Do(ctx, isRetriable, func() error {
+		return s.saveBatch(ctx, batch)
+	})
+}
+
+func (s *Storage) saveBatch(ctx context.Context, batch []metrics.Metrics) error {
 	const counterQuery = `
 		INSERT INTO metrics (id, mtype, delta)
 		VALUES ($1, $2, $3)
@@ -129,7 +153,9 @@ func (s *Storage) GetCounter(ctx context.Context, name string) (int64, error) {
 	const query = `SELECT delta FROM metrics WHERE id = $1 AND mtype = $2`
 
 	var value int64
-	err := s.db.QueryRowContext(ctx, query, name, metrics.Counter).Scan(&value)
+	err := retry.Do(ctx, isRetriable, func() error {
+		return s.db.QueryRowContext(ctx, query, name, metrics.Counter).Scan(&value)
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("counter %q not found: %w", name, err)
 	}
@@ -143,7 +169,9 @@ func (s *Storage) GetGauge(ctx context.Context, name string) (float64, error) {
 	const query = `SELECT value FROM metrics WHERE id = $1 AND mtype = $2`
 
 	var value float64
-	err := s.db.QueryRowContext(ctx, query, name, metrics.Gauge).Scan(&value)
+	err := retry.Do(ctx, isRetriable, func() error {
+		return s.db.QueryRowContext(ctx, query, name, metrics.Gauge).Scan(&value)
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("gauge %q not found: %w", name, err)
 	}
@@ -156,25 +184,29 @@ func (s *Storage) GetGauge(ctx context.Context, name string) (float64, error) {
 func (s *Storage) GetAllCounters(ctx context.Context) (map[string]int64, error) {
 	const query = `SELECT id, delta FROM metrics WHERE mtype = $1`
 
-	rows, err := s.db.QueryContext(ctx, query, metrics.Counter)
+	result := make(map[string]int64)
+	err := retry.Do(ctx, isRetriable, func() error {
+		rows, err := s.db.QueryContext(ctx, query, metrics.Counter)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		clear(result)
+		for rows.Next() {
+			var (
+				id    string
+				delta int64
+			)
+			if err := rows.Scan(&id, &delta); err != nil {
+				return err
+			}
+			result[id] = delta
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get all counters: %w", err)
-	}
-	defer rows.Close()
-
-	result := make(map[string]int64)
-	for rows.Next() {
-		var (
-			id    string
-			delta int64
-		)
-		if err := rows.Scan(&id, &delta); err != nil {
-			return nil, fmt.Errorf("scan counter row: %w", err)
-		}
-		result[id] = delta
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate counter rows: %w", err)
 	}
 	return result, nil
 }
@@ -182,25 +214,29 @@ func (s *Storage) GetAllCounters(ctx context.Context) (map[string]int64, error) 
 func (s *Storage) GetAllGauges(ctx context.Context) (map[string]float64, error) {
 	const query = `SELECT id, value FROM metrics WHERE mtype = $1`
 
-	rows, err := s.db.QueryContext(ctx, query, metrics.Gauge)
+	result := make(map[string]float64)
+	err := retry.Do(ctx, isRetriable, func() error {
+		rows, err := s.db.QueryContext(ctx, query, metrics.Gauge)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		clear(result)
+		for rows.Next() {
+			var (
+				id    string
+				value float64
+			)
+			if err := rows.Scan(&id, &value); err != nil {
+				return err
+			}
+			result[id] = value
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get all gauges: %w", err)
-	}
-	defer rows.Close()
-
-	result := make(map[string]float64)
-	for rows.Next() {
-		var (
-			id    string
-			value float64
-		)
-		if err := rows.Scan(&id, &value); err != nil {
-			return nil, fmt.Errorf("scan gauge row: %w", err)
-		}
-		result[id] = value
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate gauge rows: %w", err)
 	}
 	return result, nil
 }

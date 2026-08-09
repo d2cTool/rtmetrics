@@ -10,16 +10,12 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/storage"
 )
 
-// SyncSaveRepo оборачивает хранилище и при каждом сохранении метрики
-// синхронно записывает снимок на диск (режим STORE_INTERVAL=0).
 type SyncSaveRepo struct {
 	repo *storage.MemStorage
 	cfg  *config.ServerConfig
 	log  *slog.Logger
 }
 
-// NewSyncSaveRepo создаёт репозиторий с синхронной записью снимка после каждого обновления.
-// Использовать когда StoreInterval == 0 и задан FileStoragePath.
 func NewSyncSaveRepo(repo *storage.MemStorage, cfg *config.ServerConfig, log *slog.Logger) *SyncSaveRepo {
 	return &SyncSaveRepo{repo: repo, cfg: cfg, log: log}
 }

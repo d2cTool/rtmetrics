@@ -79,8 +79,6 @@ func Collect() GaugeMetrics {
 	}
 }
 
-// BuildBatch формирует пакет метрик для отправки на /updates/:
-// все gauge-поля структуры + счётчик PollCount.
 func BuildBatch(gauges GaugeMetrics, counters CountMetrics) []m.Metrics {
 	v := reflect.ValueOf(gauges)
 	t := v.Type()

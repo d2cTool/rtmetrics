@@ -27,14 +27,11 @@ func main() {
 	client := agent.NewClient("http://"+cfg.Address, log)
 	runner := agent.NewRunner(client, log, time.Duration(cfg.PollInterval)*time.Second, time.Duration(cfg.ReportInterval)*time.Second)
 
-	// Создаем контекст для graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Запускаем сбор и отправку метрик
 	runner.Start(ctx)
 
-	// Ожидаем сигнал для завершения
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
@@ -42,7 +39,6 @@ func main() {
 	log.Info("shutting down agent...")
 	cancel()
 
-	// Даем время горутинам завершиться
 	time.Sleep(100 * time.Millisecond)
 
 	log.Info("agent stopped")

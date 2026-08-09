@@ -3,12 +3,16 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"reflect"
 
 	m "github.com/d2cTool/rtmetrics/internal/model"
+	"github.com/d2cTool/rtmetrics/internal/retry"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -28,47 +32,50 @@ func NewClient(baseURL string, logger *slog.Logger) *Client {
 	}
 }
 
+func isRetriableNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
+func (c *Client) post(ctx context.Context, path string, headers map[string]string, body any) error {
+	return retry.Do(ctx, isRetriableNetworkError, func() error {
+		req := c.client.R()
+		for k, v := range headers {
+			req.SetHeader(k, v)
+		}
+		resp, err := req.SetBody(body).Post(path)
+		if err != nil {
+			return err
+		}
+		if !resp.IsSuccess() {
+			return fmt.Errorf("unexpected status code %d", resp.StatusCode())
+		}
+		return nil
+	})
+}
+
 func (c *Client) SendGauge(name string, value float64) error {
 	body := m.NewGauge(name, value)
-	resp, err := c.client.R().
-		SetHeader("Content-Type", "application/json").
-		SetBody(body).
-		Post("/update")
-
-	if err != nil {
+	if err := c.post(context.Background(), "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
 		return fmt.Errorf("failed to send gauge %s: %w", name, err)
 	}
-
-	if !resp.IsSuccess() {
-		return fmt.Errorf("unexpected status code %d for gauge %s", resp.StatusCode(), name)
-	}
-
 	c.logger.Debug("gauge sent", slog.String("name", name), slog.Float64("value", value))
 	return nil
 }
 
 func (c *Client) SendCounter(name string, value int64) error {
 	body := m.NewCounter(name, value)
-	resp, err := c.client.R().
-		SetHeader("Content-Type", "application/json").
-		SetBody(body).
-		Post("/update")
-
-	if err != nil {
+	if err := c.post(context.Background(), "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
 		return fmt.Errorf("failed to send counter %s: %w", name, err)
 	}
-
-	if !resp.IsSuccess() {
-		return fmt.Errorf("unexpected status code %d for counter %s", resp.StatusCode(), name)
-	}
-
 	c.logger.Debug("counter sent", slog.String("name", name), slog.Int64("value", value))
 	return nil
 }
 
-// SendBatch отправляет пакет метрик на POST /updates/ в формате []Metrics,
-// сжимая тело запроса алгоритмом gzip. Пустые батчи не отправляются.
-func (c *Client) SendBatch(metrics []m.Metrics) error {
+func (c *Client) SendBatch(ctx context.Context, metrics []m.Metrics) error {
 	if len(metrics) == 0 {
 		return nil
 	}
@@ -87,17 +94,12 @@ func (c *Client) SendBatch(metrics []m.Metrics) error {
 		return fmt.Errorf("failed to close gzip writer: %w", err)
 	}
 
-	resp, err := c.client.R().
-		SetHeader("Content-Type", "application/json").
-		SetHeader("Content-Encoding", "gzip").
-		SetBody(buf.Bytes()).
-		Post("/updates/")
-
-	if err != nil {
-		return fmt.Errorf("failed to send metrics batch: %w", err)
+	headers := map[string]string{
+		"Content-Type":     "application/json",
+		"Content-Encoding": "gzip",
 	}
-	if !resp.IsSuccess() {
-		return fmt.Errorf("unexpected status code %d for metrics batch", resp.StatusCode())
+	if err := c.post(ctx, "/updates/", headers, buf.Bytes()); err != nil {
+		return fmt.Errorf("failed to send metrics batch: %w", err)
 	}
 
 	c.logger.Debug("metrics batch sent", slog.Int("count", len(metrics)))

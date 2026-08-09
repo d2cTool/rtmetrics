@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,8 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAgentServerIntegration проверяет, что агент и сервер работают вместе:
-// агент отправляет метрики на POST /update, сервер сохраняет и отдаёт по GET /value/...
 func TestAgentServerIntegration(t *testing.T) {
 	log := slog.Default()
 	st := storage.New()
@@ -51,8 +50,6 @@ func TestAgentServerIntegration(t *testing.T) {
 	assertMetric(t, server.URL, "counter", "PollCount", "10")
 }
 
-// TestAgentServerBatchIntegration проверяет батч-путь: агент шлёт []Metrics
-// на POST /updates/ со сжатием gzip, сервер разжимает, сохраняет и отдаёт по /value.
 func TestAgentServerBatchIntegration(t *testing.T) {
 	log := slog.Default()
 	st := storage.New()
@@ -70,13 +67,13 @@ func TestAgentServerBatchIntegration(t *testing.T) {
 	client := NewClient(server.URL, log)
 
 	batch := BuildBatch(GaugeMetrics{Alloc: 100.5, RandomValue: 0.5}, CountMetrics{PollCount: 4})
-	require.NoError(t, client.SendBatch(batch))
+	require.NoError(t, client.SendBatch(context.Background(), batch))
 
 	assertMetric(t, server.URL, "gauge", "Alloc", "100.5")
 	assertMetric(t, server.URL, "counter", "PollCount", "4")
 
 	// Повторный батч — counter накапливается.
-	require.NoError(t, client.SendBatch(BuildBatch(GaugeMetrics{}, CountMetrics{PollCount: 6})))
+	require.NoError(t, client.SendBatch(context.Background(), BuildBatch(GaugeMetrics{}, CountMetrics{PollCount: 6})))
 	assertMetric(t, server.URL, "counter", "PollCount", "10")
 }
 

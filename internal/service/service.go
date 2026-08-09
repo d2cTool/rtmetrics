@@ -21,7 +21,6 @@ type Service struct {
 	repo repository.MetricsRepository
 }
 
-// New создаёт сервис поверх переданного репозитория.
 func New(repo repository.MetricsRepository) *Service {
 	return &Service{repo: repo}
 }

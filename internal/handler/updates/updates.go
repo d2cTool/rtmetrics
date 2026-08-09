@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// New возвращает обработчик POST /updates/, принимающий пакет метрик []Metrics.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.updates.new"

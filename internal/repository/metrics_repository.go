@@ -16,7 +16,5 @@ type MetricsRepository interface {
 	GetAllCounters(ctx context.Context) (map[string]int64, error)
 	GetAllGauges(ctx context.Context) (map[string]float64, error)
 
-	// SaveBatch сохраняет набор метрик за одну операцию.
-	// counter суммируются, gauge перезаписываются.
 	SaveBatch(ctx context.Context, metrics []model.Metrics) error
 }

@@ -8,9 +8,6 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// New открывает пул соединений к PostgreSQL через pgx-драйвер поверх database/sql.
-// Соединение проверяется вызовом PingContext, чтобы сразу отсечь заведомо
-// нерабочий DSN.
 func New(ctx context.Context, dsn string) (*sql.DB, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {

@@ -4,11 +4,29 @@ import (
 	"context"
 	"testing"
 
+	"errors"
 	"github.com/DATA-DOG/go-sqlmock"
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestIsRetriable(t *testing.T) {
+	assert.False(t, isRetriable(nil))
+	assert.False(t, isRetriable(errors.New("plain error")))
+
+	// Класс 08 — Connection Exception → retriable.
+	connErr := &pgconn.PgError{Code: pgerrcode.ConnectionException}
+	assert.True(t, isRetriable(connErr))
+	connFailure := &pgconn.PgError{Code: pgerrcode.ConnectionFailure}
+	assert.True(t, isRetriable(connFailure))
+
+	// Прочие SQLSTATE (например, unique_violation) → не retriable.
+	uniqueErr := &pgconn.PgError{Code: pgerrcode.UniqueViolation}
+	assert.False(t, isRetriable(uniqueErr))
+}
 
 func newTestStorage(t *testing.T) (*Storage, sqlmock.Sqlmock) {
 	t.Helper()
