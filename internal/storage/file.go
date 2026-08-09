@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,7 +9,7 @@ import (
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 )
 
-func Save(path string, counters map[string]int64, gauges map[string]float64) error {
+func Save(ctx context.Context, path string, counters map[string]int64, gauges map[string]float64) error {
 	if path == "" {
 		return nil
 	}

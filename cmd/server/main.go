@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/d2cTool/rtmetrics/internal/config/common"
 	config "github.com/d2cTool/rtmetrics/internal/config/server"
+	"github.com/d2cTool/rtmetrics/internal/database"
+	"github.com/d2cTool/rtmetrics/internal/handler/ping"
 	"github.com/d2cTool/rtmetrics/internal/handler/update"
 	"github.com/d2cTool/rtmetrics/internal/handler/value"
 	"github.com/d2cTool/rtmetrics/internal/repository"
@@ -37,7 +40,20 @@ func main() {
 		slog.Int("store_interval", cfg.StoreInterval),
 		slog.String("file_storage_path", cfg.FileStoragePath),
 		slog.Bool("restore", cfg.Restore),
+		slog.String("database", cfg.DatabaseDSN),
 	)
+
+	var db *sql.DB
+	if cfg.DatabaseDSN != "" {
+		var err error
+		db, err = database.New(context.Background(), cfg.DatabaseDSN)
+		if err != nil {
+			log.Error("failed to connect to database", slog.String("error", err.Error()))
+		} else {
+			log.Info("connected to database")
+			defer db.Close()
+		}
+	}
 
 	st := storage.New()
 
@@ -52,7 +68,12 @@ func main() {
 
 	svc := service.New(repo)
 
-	router := createRouter(log, svc)
+	var pinger ping.Pinger
+	if db != nil {
+		pinger = db
+	}
+
+	router := createRouter(log, svc, pinger)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -87,11 +108,13 @@ func main() {
 	log.Info("server stopped")
 }
 
-func createRouter(log *slog.Logger, svc service.MetricsService) *chi.Mux {
+func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
 	router.Use(compress.New(log))
+
+	router.Get("/ping", ping.New(log, pinger))
 
 	router.Post("/update", update.New(log, svc))
 	router.Post("/update/", update.New(log, svc))

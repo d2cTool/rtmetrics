@@ -14,6 +14,7 @@ type ServerConfig struct {
 	StoreInterval   int    `env:"STORE_INTERVAL"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 
 type HTTPServerConfig struct {
@@ -31,6 +32,7 @@ func Load() *ServerConfig {
 	flag.IntVar(&cfg.StoreInterval, "i", 300, "store interval")
 	flag.StringVar(&cfg.FileStoragePath, "f", "./tmp/data", "file storage path")
 	flag.BoolVar(&cfg.Restore, "r", false, "restore")
+	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN (PostgreSQL)")
 	flag.Parse()
 
 	err := env.Parse(&cfg)
