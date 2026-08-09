@@ -19,6 +19,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/repository"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/d2cTool/rtmetrics/internal/storage"
+	"github.com/d2cTool/rtmetrics/internal/storage/postgres"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
@@ -55,15 +56,39 @@ func main() {
 		}
 	}
 
-	st := storage.New()
+	// Выбор хранилища по приоритету: PostgreSQL -> файл -> память.
+	// memSt != nil означает файловый/in-memory режим (нужен для снапшота при завершении).
+	var (
+		repo  repository.MetricsRepository
+		memSt *storage.MemStorage
+	)
 
-	server.RestoreIfNeeded(cfg, st, log)
+	if db != nil {
+		pg, err := postgres.New(context.Background(), db)
+		if err != nil {
+			log.Error("failed to initialize postgres storage, falling back", slog.String("error", err.Error()))
+		} else {
+			repo = pg
+			log.Info("using postgres storage")
+		}
+	}
 
-	var repo repository.MetricsRepository = st
-	if cfg.StoreInterval == 0 && cfg.FileStoragePath != "" {
-		repo = server.NewSyncSaveRepo(st, cfg, log)
-	} else if cfg.StoreInterval > 0 && cfg.FileStoragePath != "" {
-		go server.RunPeriodicSave(cfg, st, log)
+	if repo == nil {
+		memSt = storage.New()
+		server.RestoreIfNeeded(cfg, memSt, log)
+
+		switch {
+		case cfg.FileStoragePath != "" && cfg.StoreInterval == 0:
+			repo = server.NewSyncSaveRepo(memSt, cfg, log)
+			log.Info("using in-memory storage with synchronous file persistence")
+		case cfg.FileStoragePath != "":
+			go server.RunPeriodicSave(cfg, memSt, log)
+			repo = memSt
+			log.Info("using in-memory storage with periodic file persistence")
+		default:
+			repo = memSt
+			log.Info("using in-memory storage")
+		}
 	}
 
 	svc := service.New(repo)
@@ -104,7 +129,9 @@ func main() {
 		<-serverExited
 	}
 
-	server.SaveSnapshot(cfg, st, log)
+	if memSt != nil {
+		server.SaveSnapshot(cfg, memSt, log)
+	}
 	log.Info("server stopped")
 }
 
