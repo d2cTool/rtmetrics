@@ -18,6 +18,7 @@ import (
 
 var _ repository.MetricsRepository = (*Storage)(nil)
 
+//go:embed migrations/*.sql
 var embedMigrations embed.FS
 
 type Storage struct {
