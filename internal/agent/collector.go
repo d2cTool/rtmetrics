@@ -2,7 +2,6 @@ package agent
 
 import (
 	"math/rand"
-	"reflect"
 	"runtime"
 
 	m "github.com/d2cTool/rtmetrics/internal/model"
@@ -79,18 +78,40 @@ func Collect() GaugeMetrics {
 	}
 }
 
-func BuildBatch(gauges GaugeMetrics, counters CountMetrics) []m.Metrics {
-	v := reflect.ValueOf(gauges)
-	t := v.Type()
-
-	batch := make([]m.Metrics, 0, v.NumField()+1)
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		if field.Kind() != reflect.Float64 || !field.CanInterface() {
-			continue
-		}
-		batch = append(batch, *m.NewGauge(t.Field(i).Name, field.Float()))
+func (g GaugeMetrics) Gauges() []m.Metrics {
+	return []m.Metrics{
+		*m.NewGauge("Alloc", g.Alloc),
+		*m.NewGauge("BuckHashSys", g.BuckHashSys),
+		*m.NewGauge("Frees", g.Frees),
+		*m.NewGauge("GCCPUFraction", g.GCCPUFraction),
+		*m.NewGauge("GCSys", g.GCSys),
+		*m.NewGauge("HeapAlloc", g.HeapAlloc),
+		*m.NewGauge("HeapIdle", g.HeapIdle),
+		*m.NewGauge("HeapInuse", g.HeapInuse),
+		*m.NewGauge("HeapObjects", g.HeapObjects),
+		*m.NewGauge("HeapReleased", g.HeapReleased),
+		*m.NewGauge("HeapSys", g.HeapSys),
+		*m.NewGauge("LastGC", g.LastGC),
+		*m.NewGauge("Lookups", g.Lookups),
+		*m.NewGauge("MCacheInuse", g.MCacheInuse),
+		*m.NewGauge("MCacheSys", g.MCacheSys),
+		*m.NewGauge("MSpanInuse", g.MSpanInuse),
+		*m.NewGauge("MSpanSys", g.MSpanSys),
+		*m.NewGauge("Mallocs", g.Mallocs),
+		*m.NewGauge("NextGC", g.NextGC),
+		*m.NewGauge("NumForcedGC", g.NumForcedGC),
+		*m.NewGauge("NumGC", g.NumGC),
+		*m.NewGauge("OtherSys", g.OtherSys),
+		*m.NewGauge("PauseTotalNs", g.PauseTotalNs),
+		*m.NewGauge("StackInuse", g.StackInuse),
+		*m.NewGauge("StackSys", g.StackSys),
+		*m.NewGauge("Sys", g.Sys),
+		*m.NewGauge("TotalAlloc", g.TotalAlloc),
+		*m.NewGauge("RandomValue", g.RandomValue),
 	}
-	batch = append(batch, *m.NewCounter("PollCount", counters.PollCount))
-	return batch
+}
+
+func BuildBatch(gauges GaugeMetrics, counters CountMetrics) []m.Metrics {
+	batch := gauges.Gauges()
+	return append(batch, *m.NewCounter("PollCount", counters.PollCount))
 }

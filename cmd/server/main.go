@@ -43,12 +43,16 @@ func main() {
 		slog.String("file_storage_path", cfg.FileStoragePath),
 		slog.Bool("restore", cfg.Restore),
 		slog.String("database", cfg.DatabaseDSN),
+		slog.Int("db_max_open_conns", cfg.Database.MaxOpenConns),
+		slog.Int("db_max_idle_conns", cfg.Database.MaxIdleConns),
+		slog.Duration("db_conn_max_idle_time", cfg.Database.ConnMaxIdleTime),
+		slog.Duration("db_conn_max_lifetime", cfg.Database.ConnMaxLifetime),
 	)
 
 	var db *sql.DB
 	if cfg.DatabaseDSN != "" {
 		var err error
-		db, err = database.New(context.Background(), cfg.DatabaseDSN)
+		db, err = database.New(context.Background(), cfg.DatabaseDSN, cfg.Database)
 		if err != nil {
 			log.Error("failed to connect to database", slog.String("error", err.Error()))
 		} else {

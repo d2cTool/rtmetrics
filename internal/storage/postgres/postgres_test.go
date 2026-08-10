@@ -2,13 +2,16 @@ package postgres
 
 import (
 	"context"
+	"io/fs"
 	"testing"
 
 	"errors"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,6 +29,19 @@ func TestIsRetriable(t *testing.T) {
 	// Прочие SQLSTATE (например, unique_violation) → не retriable.
 	uniqueErr := &pgconn.PgError{Code: pgerrcode.UniqueViolation}
 	assert.False(t, isRetriable(uniqueErr))
+}
+
+func TestMigrationsAreDiscovered(t *testing.T) {
+	db, _, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	migrationsFS, err := fs.Sub(embedMigrations, "migrations")
+	require.NoError(t, err)
+
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrationsFS)
+	require.NoError(t, err)
+	assert.NotEmpty(t, provider.ListSources())
 }
 
 func newTestStorage(t *testing.T) (*Storage, sqlmock.Sqlmock) {
@@ -127,5 +143,26 @@ func TestStorage_GetAllGauges(t *testing.T) {
 	got, err := s.GetAllGauges(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, map[string]float64{"Alloc": 1.5, "Sys": 2.5}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestStorage_GetAllGauges_RetryDropsPartialRows(t *testing.T) {
+	s, mock := newTestStorage(t)
+
+	failing := sqlmock.NewRows([]string{"id", "value"}).
+		AddRow("Stale", 9.9).
+		AddRow("Alloc", 1.5).
+		RowError(1, &pgconn.PgError{Code: pgerrcode.ConnectionFailure})
+	mock.ExpectQuery("SELECT id, value FROM metrics").
+		WithArgs("gauge").
+		WillReturnRows(failing)
+
+	mock.ExpectQuery("SELECT id, value FROM metrics").
+		WithArgs("gauge").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "value"}).AddRow("Alloc", 1.5))
+
+	got, err := s.GetAllGauges(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[string]float64{"Alloc": 1.5}, got)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

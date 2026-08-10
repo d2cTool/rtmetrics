@@ -6,6 +6,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
@@ -33,11 +34,20 @@ func New(ctx context.Context, db *sql.DB) (*Storage, error) {
 }
 
 func migrate(ctx context.Context, db *sql.DB) error {
-	goose.SetBaseFS(embedMigrations)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return err
+	migrationsFS, err := fs.Sub(embedMigrations, "migrations")
+	if err != nil {
+		return fmt.Errorf("open migrations dir: %w", err)
 	}
-	return goose.UpContext(ctx, db, "migrations")
+
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrationsFS)
+	if err != nil {
+		return fmt.Errorf("create goose provider: %w", err)
+	}
+
+	if _, err := provider.Up(ctx); err != nil {
+		return fmt.Errorf("apply up migrations: %w", err)
+	}
+	return nil
 }
 
 func isRetriable(err error) bool {
@@ -185,7 +195,7 @@ func (s *Storage) GetGauge(ctx context.Context, name string) (float64, error) {
 func (s *Storage) GetAllCounters(ctx context.Context) (map[string]int64, error) {
 	const query = `SELECT id, delta FROM metrics WHERE mtype = $1`
 
-	result := make(map[string]int64)
+	var result map[string]int64
 	err := retry.Do(ctx, isRetriable, func() error {
 		rows, err := s.db.QueryContext(ctx, query, metrics.Counter)
 		if err != nil {
@@ -193,7 +203,7 @@ func (s *Storage) GetAllCounters(ctx context.Context) (map[string]int64, error) 
 		}
 		defer rows.Close()
 
-		clear(result)
+		counters := make(map[string]int64)
 		for rows.Next() {
 			var (
 				id    string
@@ -202,9 +212,14 @@ func (s *Storage) GetAllCounters(ctx context.Context) (map[string]int64, error) 
 			if err := rows.Scan(&id, &delta); err != nil {
 				return err
 			}
-			result[id] = delta
+			counters[id] = delta
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		result = counters
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("get all counters: %w", err)
@@ -215,7 +230,7 @@ func (s *Storage) GetAllCounters(ctx context.Context) (map[string]int64, error) 
 func (s *Storage) GetAllGauges(ctx context.Context) (map[string]float64, error) {
 	const query = `SELECT id, value FROM metrics WHERE mtype = $1`
 
-	result := make(map[string]float64)
+	var result map[string]float64
 	err := retry.Do(ctx, isRetriable, func() error {
 		rows, err := s.db.QueryContext(ctx, query, metrics.Gauge)
 		if err != nil {
@@ -223,7 +238,7 @@ func (s *Storage) GetAllGauges(ctx context.Context) (map[string]float64, error) 
 		}
 		defer rows.Close()
 
-		clear(result)
+		gauges := make(map[string]float64)
 		for rows.Next() {
 			var (
 				id    string
@@ -232,9 +247,14 @@ func (s *Storage) GetAllGauges(ctx context.Context) (map[string]float64, error) 
 			if err := rows.Scan(&id, &value); err != nil {
 				return err
 			}
-			result[id] = value
+			gauges[id] = value
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		result = gauges
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("get all gauges: %w", err)

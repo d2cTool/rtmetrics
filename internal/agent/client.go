@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"reflect"
 
 	m "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/retry"
@@ -36,13 +35,16 @@ func isRetriableNetworkError(err error) bool {
 	if err == nil {
 		return false
 	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
 	var netErr net.Error
 	return errors.As(err, &netErr)
 }
 
 func (c *Client) post(ctx context.Context, path string, headers map[string]string, body any) error {
 	return retry.Do(ctx, isRetriableNetworkError, func() error {
-		req := c.client.R()
+		req := c.client.R().SetContext(ctx)
 		for k, v := range headers {
 			req.SetHeader(k, v)
 		}
@@ -57,18 +59,18 @@ func (c *Client) post(ctx context.Context, path string, headers map[string]strin
 	})
 }
 
-func (c *Client) SendGauge(name string, value float64) error {
+func (c *Client) SendGauge(ctx context.Context, name string, value float64) error {
 	body := m.NewGauge(name, value)
-	if err := c.post(context.Background(), "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
+	if err := c.post(ctx, "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
 		return fmt.Errorf("failed to send gauge %s: %w", name, err)
 	}
 	c.logger.Debug("gauge sent", slog.String("name", name), slog.Float64("value", value))
 	return nil
 }
 
-func (c *Client) SendCounter(name string, value int64) error {
+func (c *Client) SendCounter(ctx context.Context, name string, value int64) error {
 	body := m.NewCounter(name, value)
-	if err := c.post(context.Background(), "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
+	if err := c.post(ctx, "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
 		return fmt.Errorf("failed to send counter %s: %w", name, err)
 	}
 	c.logger.Debug("counter sent", slog.String("name", name), slog.Int64("value", value))
@@ -106,33 +108,15 @@ func (c *Client) SendBatch(ctx context.Context, metrics []m.Metrics) error {
 	return nil
 }
 
-func (c *Client) SendGaugeMetrics(metrics GaugeMetrics) error {
-	v := reflect.ValueOf(metrics)
-	t := reflect.TypeOf(metrics)
-
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		fieldType := field.Type()
-		fieldName := t.Field(i).Name
-
-		if !field.CanInterface() {
-			continue
+func (c *Client) SendGaugeMetrics(ctx context.Context, metrics GaugeMetrics) error {
+	for _, metric := range metrics.Gauges() {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
-		var err error
-		switch fieldType.Kind() {
-		case reflect.Float64:
-			err = c.SendGauge(fieldName, field.Float())
-		default:
-			c.logger.Warn("unsupported field type",
-				slog.String("field", fieldName),
-				slog.String("type", fieldType.String()))
-			continue
-		}
-
-		if err != nil {
+		if err := c.SendGauge(ctx, metric.ID, *metric.Value); err != nil {
 			c.logger.Error("failed to send gauge metric",
-				slog.String("field", fieldName),
+				slog.String("field", metric.ID),
 				slog.String("error", err.Error()))
 		}
 	}
@@ -140,8 +124,8 @@ func (c *Client) SendGaugeMetrics(metrics GaugeMetrics) error {
 	return nil
 }
 
-func (c *Client) SendCounterMetrics(metrics CountMetrics) error {
-	err := c.SendCounter("PollCount", metrics.PollCount)
+func (c *Client) SendCounterMetrics(ctx context.Context, metrics CountMetrics) error {
+	err := c.SendCounter(ctx, "PollCount", metrics.PollCount)
 
 	if err != nil {
 		c.logger.Error("failed to send counter metric", "PollCount", slog.String("error", err.Error()))
