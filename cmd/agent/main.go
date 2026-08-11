@@ -22,9 +22,10 @@ func main() {
 		slog.String("server_address", cfg.Address),
 		slog.Int("poll_interval", cfg.PollInterval),
 		slog.Int("report_interval", cfg.ReportInterval),
+		slog.Bool("signing_enabled", cfg.Key != ""),
 	)
 
-	client := agent.NewClient("http://"+cfg.Address, log)
+	client := agent.NewClient("http://"+cfg.Address, cfg.Key, log)
 	runner := agent.NewRunner(client, log, time.Duration(cfg.PollInterval)*time.Second, time.Duration(cfg.ReportInterval)*time.Second)
 
 		ctx, cancel := context.WithCancel(context.Background())

@@ -12,6 +12,7 @@ type AgentConfig struct {
 	Address        string `env:"ADDRESS"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
+	Key            string `env:"KEY"`
 }
 
 func Load() *AgentConfig {
@@ -20,6 +21,7 @@ func Load() *AgentConfig {
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "server address")
 	flag.IntVar(&cfg.ReportInterval, "r", 10, "report interval")
 	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval")
+	flag.StringVar(&cfg.Key, "k", "", "key for request signing (HMAC-SHA256)")
 	flag.Parse()
 
 	err := env.Parse(&cfg)
