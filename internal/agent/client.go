@@ -1,11 +1,17 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
-	"reflect"
+	"net"
 
 	m "github.com/d2cTool/rtmetrics/internal/model"
+	"github.com/d2cTool/rtmetrics/internal/retry"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -25,71 +31,92 @@ func NewClient(baseURL string, logger *slog.Logger) *Client {
 	}
 }
 
-func (c *Client) SendGauge(name string, value float64) error {
-	body := m.NewGauge(name, value)
-	resp, err := c.client.R().
-		SetHeader("Content-Type", "application/json").
-		SetBody(body).
-		Post("/update")
+func isRetriableNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
 
-	if err != nil {
+func (c *Client) post(ctx context.Context, path string, headers map[string]string, body any) error {
+	return retry.Do(ctx, isRetriableNetworkError, func() error {
+		req := c.client.R().SetContext(ctx)
+		for k, v := range headers {
+			req.SetHeader(k, v)
+		}
+		resp, err := req.SetBody(body).Post(path)
+		if err != nil {
+			return err
+		}
+		if !resp.IsSuccess() {
+			return fmt.Errorf("unexpected status code %d", resp.StatusCode())
+		}
+		return nil
+	})
+}
+
+func (c *Client) SendGauge(ctx context.Context, name string, value float64) error {
+	body := m.NewGauge(name, value)
+	if err := c.post(ctx, "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
 		return fmt.Errorf("failed to send gauge %s: %w", name, err)
 	}
-
-	if !resp.IsSuccess() {
-		return fmt.Errorf("unexpected status code %d for gauge %s", resp.StatusCode(), name)
-	}
-
 	c.logger.Debug("gauge sent", slog.String("name", name), slog.Float64("value", value))
 	return nil
 }
 
-func (c *Client) SendCounter(name string, value int64) error {
+func (c *Client) SendCounter(ctx context.Context, name string, value int64) error {
 	body := m.NewCounter(name, value)
-	resp, err := c.client.R().
-		SetHeader("Content-Type", "application/json").
-		SetBody(body).
-		Post("/update")
-
-	if err != nil {
+	if err := c.post(ctx, "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
 		return fmt.Errorf("failed to send counter %s: %w", name, err)
 	}
-
-	if !resp.IsSuccess() {
-		return fmt.Errorf("unexpected status code %d for counter %s", resp.StatusCode(), name)
-	}
-
 	c.logger.Debug("counter sent", slog.String("name", name), slog.Int64("value", value))
 	return nil
 }
 
-func (c *Client) SendGaugeMetrics(metrics GaugeMetrics) error {
-	v := reflect.ValueOf(metrics)
-	t := reflect.TypeOf(metrics)
+func (c *Client) SendBatch(ctx context.Context, metrics []m.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
 
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-		fieldType := field.Type()
-		fieldName := t.Field(i).Name
+	data, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics batch: %w", err)
+	}
 
-		if !field.CanInterface() {
-			continue
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return fmt.Errorf("failed to gzip metrics batch: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	headers := map[string]string{
+		"Content-Type":     "application/json",
+		"Content-Encoding": "gzip",
+	}
+	if err := c.post(ctx, "/updates/", headers, buf.Bytes()); err != nil {
+		return fmt.Errorf("failed to send metrics batch: %w", err)
+	}
+
+	c.logger.Debug("metrics batch sent", slog.Int("count", len(metrics)))
+	return nil
+}
+
+func (c *Client) SendGaugeMetrics(ctx context.Context, metrics GaugeMetrics) error {
+	for _, metric := range metrics.Gauges() {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
-		var err error
-		switch fieldType.Kind() {
-		case reflect.Float64:
-			err = c.SendGauge(fieldName, field.Float())
-		default:
-			c.logger.Warn("unsupported field type",
-				slog.String("field", fieldName),
-				slog.String("type", fieldType.String()))
-			continue
-		}
-
-		if err != nil {
+		if err := c.SendGauge(ctx, metric.ID, *metric.Value); err != nil {
 			c.logger.Error("failed to send gauge metric",
-				slog.String("field", fieldName),
+				slog.String("field", metric.ID),
 				slog.String("error", err.Error()))
 		}
 	}
@@ -97,8 +124,8 @@ func (c *Client) SendGaugeMetrics(metrics GaugeMetrics) error {
 	return nil
 }
 
-func (c *Client) SendCounterMetrics(metrics CountMetrics) error {
-	err := c.SendCounter("PollCount", metrics.PollCount)
+func (c *Client) SendCounterMetrics(ctx context.Context, metrics CountMetrics) error {
+	err := c.SendCounter(ctx, "PollCount", metrics.PollCount)
 
 	if err != nil {
 		c.logger.Error("failed to send counter metric", "PollCount", slog.String("error", err.Error()))

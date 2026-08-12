@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,11 +12,15 @@ import (
 
 	"github.com/d2cTool/rtmetrics/internal/config/common"
 	config "github.com/d2cTool/rtmetrics/internal/config/server"
+	"github.com/d2cTool/rtmetrics/internal/database"
+	"github.com/d2cTool/rtmetrics/internal/handler/ping"
 	"github.com/d2cTool/rtmetrics/internal/handler/update"
+	"github.com/d2cTool/rtmetrics/internal/handler/updates"
 	"github.com/d2cTool/rtmetrics/internal/handler/value"
 	"github.com/d2cTool/rtmetrics/internal/repository"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/d2cTool/rtmetrics/internal/storage"
+	"github.com/d2cTool/rtmetrics/internal/storage/postgres"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
@@ -37,22 +42,68 @@ func main() {
 		slog.Int("store_interval", cfg.StoreInterval),
 		slog.String("file_storage_path", cfg.FileStoragePath),
 		slog.Bool("restore", cfg.Restore),
+		slog.String("database", cfg.DatabaseDSN),
+		slog.Int("db_max_open_conns", cfg.Database.MaxOpenConns),
+		slog.Int("db_max_idle_conns", cfg.Database.MaxIdleConns),
+		slog.Duration("db_conn_max_idle_time", cfg.Database.ConnMaxIdleTime),
+		slog.Duration("db_conn_max_lifetime", cfg.Database.ConnMaxLifetime),
 	)
 
-	st := storage.New()
+	var db *sql.DB
+	if cfg.DatabaseDSN != "" {
+		var err error
+		db, err = database.New(context.Background(), cfg.DatabaseDSN, cfg.Database)
+		if err != nil {
+			log.Error("failed to connect to database", slog.String("error", err.Error()))
+		} else {
+			log.Info("connected to database")
+			defer db.Close()
+		}
+	}
 
-	server.RestoreIfNeeded(cfg, st, log)
+	// Выбор хранилища по приоритету: PostgreSQL -> файл -> память.
+	// memSt != nil означает файловый/in-memory режим (нужен для снапшота при завершении).
+	var (
+		repo  repository.MetricsRepository
+		memSt *storage.MemStorage
+	)
 
-	var repo repository.MetricsRepository = st
-	if cfg.StoreInterval == 0 && cfg.FileStoragePath != "" {
-		repo = server.NewSyncSaveRepo(st, cfg, log)
-	} else if cfg.StoreInterval > 0 && cfg.FileStoragePath != "" {
-		go server.RunPeriodicSave(cfg, st, log)
+	if db != nil {
+		pg, err := postgres.New(context.Background(), db)
+		if err != nil {
+			log.Error("failed to initialize postgres storage, falling back", slog.String("error", err.Error()))
+		} else {
+			repo = pg
+			log.Info("using postgres storage")
+		}
+	}
+
+	if repo == nil {
+		memSt = storage.New()
+		server.RestoreIfNeeded(cfg, memSt, log)
+
+		switch {
+		case cfg.FileStoragePath != "" && cfg.StoreInterval == 0:
+			repo = server.NewSyncSaveRepo(memSt, cfg, log)
+			log.Info("using in-memory storage with synchronous file persistence")
+		case cfg.FileStoragePath != "":
+			go server.RunPeriodicSave(cfg, memSt, log)
+			repo = memSt
+			log.Info("using in-memory storage with periodic file persistence")
+		default:
+			repo = memSt
+			log.Info("using in-memory storage")
+		}
 	}
 
 	svc := service.New(repo)
 
-	router := createRouter(log, svc)
+	var pinger ping.Pinger
+	if db != nil {
+		pinger = db
+	}
+
+	router := createRouter(log, svc, pinger)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -83,18 +134,24 @@ func main() {
 		<-serverExited
 	}
 
-	server.SaveSnapshot(cfg, st, log)
+	if memSt != nil {
+		server.SaveSnapshot(cfg, memSt, log)
+	}
 	log.Info("server stopped")
 }
 
-func createRouter(log *slog.Logger, svc service.MetricsService) *chi.Mux {
+func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
 	router.Use(compress.New(log))
 
+	router.Get("/ping", ping.New(log, pinger))
+
 	router.Post("/update", update.New(log, svc))
 	router.Post("/update/", update.New(log, svc))
+	router.Post("/updates", updates.New(log, svc))
+	router.Post("/updates/", updates.New(log, svc))
 	router.Post("/value", value.New(log, svc))
 	router.Post("/value/", value.New(log, svc))
 

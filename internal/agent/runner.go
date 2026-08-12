@@ -28,13 +28,9 @@ func NewRunner(client *Client, logger *slog.Logger, pollInterval, reportInterval
 }
 
 func (r *Runner) Start(ctx context.Context) {
-	// Инициализируем метрики при старте
 	r.updateMetrics()
 
-	// Горутина для периодического сбора метрик
 	go r.pollMetrics(ctx)
-
-	// Горутина для периодической отправки метрик
 	go r.reportMetrics(ctx)
 }
 
@@ -68,7 +64,7 @@ func (r *Runner) reportMetrics(ctx context.Context) {
 			r.logger.Info("stopped reporting metrics")
 			return
 		case <-ticker.C:
-			r.sendCurrentMetrics()
+			r.sendCurrentMetrics(ctx)
 		}
 	}
 }
@@ -80,21 +76,20 @@ func (r *Runner) updateMetrics() {
 	r.counters.PollCount++
 }
 
-func (r *Runner) sendCurrentMetrics() {
+func (r *Runner) sendCurrentMetrics(ctx context.Context) {
 	r.mu.RLock()
 	gaugeMetrics := r.gauges
 	counterMetrics := r.counters
 	r.mu.RUnlock()
 
-	if err := r.client.SendGaugeMetrics(gaugeMetrics); err != nil {
-		r.logger.Error("failed to send gauge metrics", slog.String("error", err.Error()))
-	} else {
-		r.logger.Debug("gauge metrics sent successfully")
+	batch := BuildBatch(gaugeMetrics, counterMetrics)
+	if len(batch) == 0 {
+		return
 	}
 
-	if err := r.client.SendCounterMetrics(counterMetrics); err != nil {
-		r.logger.Error("failed to send counter metrics", slog.String("error", err.Error()))
+	if err := r.client.SendBatch(ctx, batch); err != nil {
+		r.logger.Error("failed to send metrics batch", slog.String("error", err.Error()))
 	} else {
-		r.logger.Debug("counter metrics sent successfully")
+		r.logger.Debug("metrics batch sent successfully")
 	}
 }

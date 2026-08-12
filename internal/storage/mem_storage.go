@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/d2cTool/rtmetrics/internal/model"
 )
 
 var (
@@ -45,6 +47,25 @@ func (s *MemStorage) SaveGauge(ctx context.Context, name string, value float64) 
 
 	s.Gauges[name] = value
 	return value, nil
+}
+
+func (s *MemStorage) SaveBatch(ctx context.Context, metrics []model.Metrics) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, m := range metrics {
+		switch m.MType {
+		case model.Counter:
+			if m.Delta != nil {
+				s.Counters[m.ID] += *m.Delta
+			}
+		case model.Gauge:
+			if m.Value != nil {
+				s.Gauges[m.ID] = *m.Value
+			}
+		}
+	}
+	return nil
 }
 
 func (s *MemStorage) GetCounter(ctx context.Context, name string) (int64, error) {

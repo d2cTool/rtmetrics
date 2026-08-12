@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -85,6 +86,25 @@ func (m *mockRepository) GetAllGauges(ctx context.Context) (map[string]float64, 
 		return nil, m.err
 	}
 	return m.gauges, nil
+}
+
+func (m *mockRepository) SaveBatch(ctx context.Context, batch []metrics.Metrics) error {
+	if m.err != nil {
+		return m.err
+	}
+	for _, mt := range batch {
+		switch mt.MType {
+		case metrics.Counter:
+			if mt.Delta != nil {
+				m.counters[mt.ID] += *mt.Delta
+			}
+		case metrics.Gauge:
+			if mt.Value != nil {
+				m.gauges[mt.ID] = *mt.Value
+			}
+		}
+	}
+	return nil
 }
 
 func TestNew_GetCounter_Success(t *testing.T) {
