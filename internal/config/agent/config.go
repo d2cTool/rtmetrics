@@ -31,9 +31,5 @@ func Load() *AgentConfig {
 		panic(err)
 	}
 
-	if cfg.RateLimit < 1 {
-		cfg.RateLimit = 1
-	}
-
 	return &cfg
 }

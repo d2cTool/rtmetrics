@@ -44,7 +44,8 @@ func TestWorkerPoolLimitsConcurrentRequests(t *testing.T) {
 	}))
 	defer server.Close()
 
-	pool := NewWorkerPool(NewClient(server.URL, "", slog.Default()), slog.Default(), workers)
+	pool, err := NewWorkerPool(NewClient(server.URL, "", slog.Default()), slog.Default(), workers)
+	require.NoError(t, err)
 
 	ctx := context.Background()
 	pool.Start(ctx)
@@ -67,7 +68,8 @@ func TestWorkerPoolSubmitStopsOnCancelledContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	pool := NewWorkerPool(NewClient(server.URL, "", slog.Default()), slog.Default(), 1)
+	pool, err := NewWorkerPool(NewClient(server.URL, "", slog.Default()), slog.Default(), 1)
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -76,10 +78,16 @@ func TestWorkerPoolSubmitStopsOnCancelledContext(t *testing.T) {
 	assert.True(t, pool.Submit(ctx, nil), "пустое задание не должно ставиться в очередь")
 }
 
-func TestNewWorkerPoolNormalizesWorkers(t *testing.T) {
+func TestNewWorkerPoolRejectsInvalidWorkers(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, 1, NewWorkerPool(nil, slog.Default(), 0).Workers())
-	assert.Equal(t, 1, NewWorkerPool(nil, slog.Default(), -5).Workers())
-	assert.Equal(t, 4, NewWorkerPool(nil, slog.Default(), 4).Workers())
+	for _, workers := range []int{0, -5} {
+		pool, err := NewWorkerPool(nil, slog.Default(), workers)
+		require.Error(t, err, "workers=%d", workers)
+		assert.Nil(t, pool)
+	}
+
+	pool, err := NewWorkerPool(nil, slog.Default(), 4)
+	require.NoError(t, err)
+	assert.Equal(t, 4, pool.Workers())
 }

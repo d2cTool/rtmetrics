@@ -27,13 +27,17 @@ func main() {
 	)
 
 	client := agent.NewClient("http://"+cfg.Address, cfg.Key, log)
-	runner := agent.NewRunner(
+	runner, err := agent.NewRunner(
 		client,
 		log,
 		time.Duration(cfg.PollInterval)*time.Second,
 		time.Duration(cfg.ReportInterval)*time.Second,
 		cfg.RateLimit,
 	)
+	if err != nil {
+		log.Error("invalid configuration", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

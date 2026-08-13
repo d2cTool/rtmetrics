@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -15,19 +16,31 @@ type Runner struct {
 	pollInterval   time.Duration
 	reportInterval time.Duration
 
-	mu       sync.RWMutex
+	mu       sync.Mutex
 	gauges   GaugeMetrics
 	system   SystemMetrics
 	counters CountMetrics
 }
 
-func NewRunner(client *Client, logger *slog.Logger, pollInterval, reportInterval time.Duration, rateLimit int) *Runner {
+func NewRunner(client *Client, logger *slog.Logger, pollInterval, reportInterval time.Duration, rateLimit int) (*Runner, error) {
+	if pollInterval <= 0 {
+		return nil, fmt.Errorf("poll interval must be > 0, got %s", pollInterval)
+	}
+	if reportInterval <= 0 {
+		return nil, fmt.Errorf("report interval must be > 0, got %s", reportInterval)
+	}
+
+	pool, err := NewWorkerPool(client, logger, rateLimit)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Runner{
-		pool:           NewWorkerPool(client, logger, rateLimit),
+		pool:           pool,
 		logger:         logger,
 		pollInterval:   pollInterval,
 		reportInterval: reportInterval,
-	}
+	}, nil
 }
 
 func (r *Runner) Run(ctx context.Context) {
@@ -140,8 +153,8 @@ func (r *Runner) submitCurrentMetrics(ctx context.Context) {
 }
 
 func (r *Runner) snapshot() []m.Metrics {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	return append(BuildBatch(r.gauges, r.counters), r.system.Gauges()...)
 }

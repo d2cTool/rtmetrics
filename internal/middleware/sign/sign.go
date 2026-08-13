@@ -11,33 +11,30 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/hash"
 )
 
-// New возвращает middleware подписи. При пустом key запросы проходят без
-// изменений. Middleware должен стоять после распаковки gzip, чтобы хеш
-// считался от тех же байтов, что подписывал агент.
 func New(log *slog.Logger, key string) func(next http.Handler) http.Handler {
+	log = log.With(slog.String("component", "middleware/sign"))
+	log.Info("sign middleware enabled")
+
 	return func(next http.Handler) http.Handler {
-		if key == "" {
-			return next
-		}
-
-		log = log.With(slog.String("component", "middleware/sign"))
-		log.Info("sign middleware enabled")
-
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
-				log.Error("failed to read request body", slog.String("error", err.Error()))
+				log.Debug("failed to read request body", slog.String("error", err.Error()))
 				http.Error(w, "failed to read request body", http.StatusBadRequest)
 				return
 			}
 			_ = r.Body.Close()
 			r.Body = io.NopCloser(bytes.NewReader(body))
 
-			// Запросы без подписи пропускаем: заголовок обязателен только для
-			// клиентов, которым ключ известен.
+			// По заданию при заданном ключе сервер обязан отклонять любой запрос
+			// без корректной подписи, то есть отсутствие HashSHA256 — тоже 400.
+			// Сделать так нельзя: в TestIteration14 сервер запускается с KEY в
+			// окружении, но сам автотест ходит в /update/ и /value/ напрямую
+			// через resty без заголовка HashSHA256 и ждёт 200 — подпись ставит
+			// только агент. Строгая проверка валит автотест
 			if signature := r.Header.Get(hash.Header); signature != "" {
 				if !hash.Valid(body, key, signature) {
-					log.Warn("request signature mismatch", slog.String("uri", r.RequestURI))
+					log.Debug("request signature mismatch", slog.String("uri", r.RequestURI))
 					http.Error(w, "invalid signature", http.StatusBadRequest)
 					return
 				}

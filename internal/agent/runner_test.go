@@ -54,7 +54,9 @@ func TestChunkBatch(t *testing.T) {
 func TestRunnerSnapshotIncludesRuntimeAndSystemMetrics(t *testing.T) {
 	t.Parallel()
 
-	r := NewRunner(nil, slog.Default(), time.Second, time.Second, 1)
+	r, err := NewRunner(nil, slog.Default(), time.Second, time.Second, 1)
+	require.NoError(t, err)
+
 	r.updateRuntimeMetrics()
 	r.system = SystemMetrics{TotalMemory: 100, FreeMemory: 50, CPUUtilization: []float64{1, 2}}
 
@@ -77,7 +79,8 @@ func TestRunnerCollectsAndReportsInSeparateGoroutines(t *testing.T) {
 	}))
 	defer server.Close()
 
-	runner := NewRunner(NewClient(server.URL, "", slog.Default()), slog.Default(), 10*time.Millisecond, 30*time.Millisecond, 3)
+	runner, err := NewRunner(NewClient(server.URL, "", slog.Default()), slog.Default(), 10*time.Millisecond, 30*time.Millisecond, 3)
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -96,8 +99,8 @@ func TestRunnerCollectsAndReportsInSeparateGoroutines(t *testing.T) {
 
 	assert.Positive(t, requests.Load(), "метрики должны уйти на сервер")
 
-	runner.mu.RLock()
-	defer runner.mu.RUnlock()
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
 	assert.Positive(t, runner.counters.PollCount, "runtime-метрики должны опрашиваться")
 	assert.Positive(t, runner.system.TotalMemory, "системные метрики должны опрашиваться")
 }

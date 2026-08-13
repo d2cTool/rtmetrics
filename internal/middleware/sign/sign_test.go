@@ -78,17 +78,6 @@ func TestRequestWithoutSignatureIsAccepted(t *testing.T) {
 	assert.NotEmpty(t, resp.Header.Get(hash.Header), "ответ подписывается и без подписи в запросе")
 }
 
-func TestWithoutKeyMiddlewareIsTransparent(t *testing.T) {
-	t.Parallel()
-
-	// Подпись заведомо не совпадает с телом, но без ключа проверок нет.
-	resp := doRequest(t, "", "payload", "deadbeef")
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Empty(t, resp.Header.Get(hash.Header))
-}
-
 func TestHandlerStatusIsPreserved(t *testing.T) {
 	t.Parallel()
 

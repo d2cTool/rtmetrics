@@ -39,7 +39,7 @@ func TestAgentServerIntegration(t *testing.T) {
 
 	client := NewClient(server.URL, "", log)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Отправляем метрики так же, как это делает агент
 	require.NoError(t, client.SendGauge(ctx, "Alloc", 12345.67))
@@ -73,13 +73,13 @@ func TestAgentServerBatchIntegration(t *testing.T) {
 	client := NewClient(server.URL, "", log)
 
 	batch := BuildBatch(GaugeMetrics{Alloc: 100.5, RandomValue: 0.5}, CountMetrics{PollCount: 4})
-	require.NoError(t, client.SendBatch(context.Background(), batch))
+	require.NoError(t, client.SendBatch(t.Context(), batch))
 
 	assertMetric(t, server.URL, "gauge", "Alloc", "100.5")
 	assertMetric(t, server.URL, "counter", "PollCount", "4")
 
 	// Повторный батч — counter накапливается.
-	require.NoError(t, client.SendBatch(context.Background(), BuildBatch(GaugeMetrics{}, CountMetrics{PollCount: 6})))
+	require.NoError(t, client.SendBatch(t.Context(), BuildBatch(GaugeMetrics{}, CountMetrics{PollCount: 6})))
 	assertMetric(t, server.URL, "counter", "PollCount", "10")
 }
 
@@ -103,14 +103,14 @@ func TestAgentServerSignedBatchIntegration(t *testing.T) {
 	defer server.Close()
 
 	batch := BuildBatch(GaugeMetrics{Alloc: 100.5}, CountMetrics{PollCount: 4})
-	require.NoError(t, NewClient(server.URL, key, log).SendBatch(context.Background(), batch))
+	require.NoError(t, NewClient(server.URL, key, log).SendBatch(t.Context(), batch))
 
 	assertMetric(t, server.URL, "gauge", "Alloc", "100.5")
 	assertMetric(t, server.URL, "counter", "PollCount", "4")
 
 	// Агент с чужим ключом получает 400 и метрики не меняет.
 	stale := BuildBatch(GaugeMetrics{Alloc: 999}, CountMetrics{PollCount: 100})
-	require.Error(t, NewClient(server.URL, "wrong-key", log).SendBatch(context.Background(), stale))
+	require.Error(t, NewClient(server.URL, "wrong-key", log).SendBatch(t.Context(), stale))
 	assertMetric(t, server.URL, "gauge", "Alloc", "100.5")
 
 	// Ответ сервера тоже подписан.
@@ -133,7 +133,7 @@ func TestClientDoesNotSendOnCancelledContext(t *testing.T) {
 
 	client := NewClient(server.URL, "", slog.Default())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	require.ErrorIs(t, client.SendGauge(ctx, "Alloc", 1), context.Canceled)
@@ -153,7 +153,7 @@ func TestClientAbortsInFlightRequestOnCancel(t *testing.T) {
 
 	client := NewClient(server.URL, "", slog.Default())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		cancel()

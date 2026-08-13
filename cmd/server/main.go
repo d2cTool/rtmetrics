@@ -147,9 +147,9 @@ func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Ping
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
 	router.Use(compress.New(log))
-	// После compress: подпись считается от распакованного тела запроса
-	// и от несжатого тела ответа.
-	router.Use(sign.New(log, key))
+	if key != "" {
+		router.Use(sign.New(log, key))
+	}
 
 	router.Get("/ping", ping.New(log, pinger))
 

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -17,9 +18,9 @@ type WorkerPool struct {
 	once    sync.Once
 }
 
-func NewWorkerPool(client *Client, logger *slog.Logger, workers int) *WorkerPool {
+func NewWorkerPool(client *Client, logger *slog.Logger, workers int) (*WorkerPool, error) {
 	if workers < 1 {
-		workers = 1
+		return nil, fmt.Errorf("rate limit must be >= 1, got %d", workers)
 	}
 
 	return &WorkerPool{
@@ -27,7 +28,7 @@ func NewWorkerPool(client *Client, logger *slog.Logger, workers int) *WorkerPool
 		logger:  logger,
 		workers: workers,
 		jobs:    make(chan []m.Metrics, workers),
-	}
+	}, nil
 }
 
 func (p *WorkerPool) Workers() int {
@@ -51,6 +52,12 @@ func (p *WorkerPool) Submit(ctx context.Context, batch []m.Metrics) bool {
 	select {
 	case <-ctx.Done():
 		return false
+	default:
+	}
+
+	select {
+	case <-ctx.Done():
+		return false
 	case p.jobs <- batch:
 		return true
 	}
@@ -67,21 +74,26 @@ func (p *WorkerPool) Stop() {
 func (p *WorkerPool) work(ctx context.Context, id int) {
 	defer p.wg.Done()
 
-	for batch := range p.jobs {
-		if ctx.Err() != nil {
+	for {
+		select {
+		case <-ctx.Done():
 			return
-		}
+		case batch, ok := <-p.jobs:
+			if !ok {
+				return
+			}
 
-		if err := p.client.SendBatch(ctx, batch); err != nil {
-			p.logger.Error("failed to send metrics batch",
+			if err := p.client.SendBatch(ctx, batch); err != nil {
+				p.logger.Error("failed to send metrics batch",
+					slog.Int("worker", id),
+					slog.Int("count", len(batch)),
+					slog.String("error", err.Error()))
+				continue
+			}
+
+			p.logger.Debug("metrics batch sent",
 				slog.Int("worker", id),
-				slog.Int("count", len(batch)),
-				slog.String("error", err.Error()))
-			continue
+				slog.Int("count", len(batch)))
 		}
-
-		p.logger.Debug("metrics batch sent",
-			slog.Int("worker", id),
-			slog.Int("count", len(batch)))
 	}
 }
