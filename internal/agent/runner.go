@@ -2,57 +2,104 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
+
+	m "github.com/d2cTool/rtmetrics/internal/model"
 )
 
 type Runner struct {
-	client         *Client
+	pool           *WorkerPool
 	logger         *slog.Logger
 	pollInterval   time.Duration
 	reportInterval time.Duration
 
-	mu       sync.RWMutex
+	mu       sync.Mutex
 	gauges   GaugeMetrics
+	system   SystemMetrics
 	counters CountMetrics
 }
 
-func NewRunner(client *Client, logger *slog.Logger, pollInterval, reportInterval time.Duration) *Runner {
+func NewRunner(client *Client, logger *slog.Logger, pollInterval, reportInterval time.Duration, rateLimit int) (*Runner, error) {
+	if pollInterval <= 0 {
+		return nil, fmt.Errorf("poll interval must be > 0, got %s", pollInterval)
+	}
+	if reportInterval <= 0 {
+		return nil, fmt.Errorf("report interval must be > 0, got %s", reportInterval)
+	}
+
+	pool, err := NewWorkerPool(client, logger, rateLimit)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Runner{
-		client:         client,
+		pool:           pool,
 		logger:         logger,
 		pollInterval:   pollInterval,
 		reportInterval: reportInterval,
+	}, nil
+}
+
+func (r *Runner) Run(ctx context.Context) {
+	r.pool.Start(ctx)
+
+	var wg sync.WaitGroup
+	for _, loop := range []func(context.Context){r.pollRuntime, r.pollSystem, r.report} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			loop(ctx)
+		}()
 	}
+
+	wg.Wait()
+	r.pool.Stop()
 }
 
-func (r *Runner) Start(ctx context.Context) {
-	r.updateMetrics()
+func (r *Runner) pollRuntime(ctx context.Context) {
+	r.updateRuntimeMetrics()
 
-	go r.pollMetrics(ctx)
-	go r.reportMetrics(ctx)
-}
-
-func (r *Runner) pollMetrics(ctx context.Context) {
 	ticker := time.NewTicker(r.pollInterval)
 	defer ticker.Stop()
 
-	r.logger.Info("started polling metrics", slog.Duration("interval", r.pollInterval))
+	r.logger.Info("started polling runtime metrics", slog.Duration("interval", r.pollInterval))
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Info("stopped polling metrics")
+			r.logger.Info("stopped polling runtime metrics")
 			return
 		case <-ticker.C:
-			r.updateMetrics()
-			r.logger.Debug("metrics collected")
+			r.updateRuntimeMetrics()
+			r.logger.Debug("runtime metrics collected")
 		}
 	}
 }
 
-func (r *Runner) reportMetrics(ctx context.Context) {
+func (r *Runner) pollSystem(ctx context.Context) {
+	r.updateSystemMetrics(ctx)
+
+	ticker := time.NewTicker(r.pollInterval)
+	defer ticker.Stop()
+
+	r.logger.Info("started polling system metrics", slog.Duration("interval", r.pollInterval))
+
+	for {
+		select {
+		case <-ctx.Done():
+			r.logger.Info("stopped polling system metrics")
+			return
+		case <-ticker.C:
+			r.updateSystemMetrics(ctx)
+			r.logger.Debug("system metrics collected")
+		}
+	}
+}
+
+func (r *Runner) report(ctx context.Context) {
 	ticker := time.NewTicker(r.reportInterval)
 	defer ticker.Stop()
 
@@ -64,32 +111,67 @@ func (r *Runner) reportMetrics(ctx context.Context) {
 			r.logger.Info("stopped reporting metrics")
 			return
 		case <-ticker.C:
-			r.sendCurrentMetrics(ctx)
+			r.submitCurrentMetrics(ctx)
 		}
 	}
 }
 
-func (r *Runner) updateMetrics() {
+func (r *Runner) updateRuntimeMetrics() {
+	gauges := Collect()
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.gauges = Collect()
+	r.gauges = gauges
 	r.counters.PollCount++
 }
 
-func (r *Runner) sendCurrentMetrics(ctx context.Context) {
-	r.mu.RLock()
-	gaugeMetrics := r.gauges
-	counterMetrics := r.counters
-	r.mu.RUnlock()
+func (r *Runner) updateSystemMetrics(ctx context.Context) {
+	system, err := CollectSystem(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			r.logger.Error("failed to collect system metrics", slog.String("error", err.Error()))
+		}
+		return
+	}
 
-	batch := BuildBatch(gaugeMetrics, counterMetrics)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.system = system
+}
+
+func (r *Runner) submitCurrentMetrics(ctx context.Context) {
+	batch := r.snapshot()
 	if len(batch) == 0 {
 		return
 	}
 
-	if err := r.client.SendBatch(ctx, batch); err != nil {
-		r.logger.Error("failed to send metrics batch", slog.String("error", err.Error()))
-	} else {
-		r.logger.Debug("metrics batch sent successfully")
+	for _, chunk := range chunkBatch(batch, r.pool.Workers()) {
+		if !r.pool.Submit(ctx, chunk) {
+			return
+		}
 	}
+}
+
+func (r *Runner) snapshot() []m.Metrics {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append(BuildBatch(r.gauges, r.counters), r.system.Gauges()...)
+}
+
+func chunkBatch(batch []m.Metrics, parts int) [][]m.Metrics {
+	if len(batch) == 0 {
+		return nil
+	}
+	if parts < 1 {
+		parts = 1
+	}
+
+	size := (len(batch) + parts - 1) / parts
+	chunks := make([][]m.Metrics, 0, parts)
+	for start := 0; start < len(batch); start += size {
+		chunks = append(chunks, batch[start:min(start+size, len(batch))])
+	}
+
+	return chunks
 }

@@ -13,7 +13,9 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/handler/get"
 	"github.com/d2cTool/rtmetrics/internal/handler/update"
 	"github.com/d2cTool/rtmetrics/internal/handler/updates"
+	"github.com/d2cTool/rtmetrics/internal/hash"
 	compressmw "github.com/d2cTool/rtmetrics/internal/middleware/compress"
+	signmw "github.com/d2cTool/rtmetrics/internal/middleware/sign"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/d2cTool/rtmetrics/internal/storage"
 	"github.com/go-chi/chi/v5"
@@ -35,9 +37,9 @@ func TestAgentServerIntegration(t *testing.T) {
 	server := httptest.NewServer(r)
 	defer server.Close()
 
-	client := NewClient(server.URL, log)
+	client := NewClient(server.URL, "", log)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Отправляем метрики так же, как это делает агент
 	require.NoError(t, client.SendGauge(ctx, "Alloc", 12345.67))
@@ -68,17 +70,56 @@ func TestAgentServerBatchIntegration(t *testing.T) {
 	server := httptest.NewServer(r)
 	defer server.Close()
 
-	client := NewClient(server.URL, log)
+	client := NewClient(server.URL, "", log)
 
 	batch := BuildBatch(GaugeMetrics{Alloc: 100.5, RandomValue: 0.5}, CountMetrics{PollCount: 4})
-	require.NoError(t, client.SendBatch(context.Background(), batch))
+	require.NoError(t, client.SendBatch(t.Context(), batch))
 
 	assertMetric(t, server.URL, "gauge", "Alloc", "100.5")
 	assertMetric(t, server.URL, "counter", "PollCount", "4")
 
 	// Повторный батч — counter накапливается.
-	require.NoError(t, client.SendBatch(context.Background(), BuildBatch(GaugeMetrics{}, CountMetrics{PollCount: 6})))
+	require.NoError(t, client.SendBatch(t.Context(), BuildBatch(GaugeMetrics{}, CountMetrics{PollCount: 6})))
 	assertMetric(t, server.URL, "counter", "PollCount", "10")
+}
+
+// Батч уходит сжатым, а подписывается до сжатия — сервер считает хеш после
+// распаковки, поэтому обе стороны должны сойтись именно на исходном JSON.
+func TestAgentServerSignedBatchIntegration(t *testing.T) {
+	const key = "super-secret"
+
+	log := slog.Default()
+	st := storage.New()
+	svc := service.New(st)
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(compressmw.New(log))
+	r.Use(signmw.New(log, key))
+	r.Post("/updates/", updates.New(log, svc))
+	r.Get("/value/{mtype}/{name}", get.New(log, svc))
+
+	server := httptest.NewServer(r)
+	defer server.Close()
+
+	batch := BuildBatch(GaugeMetrics{Alloc: 100.5}, CountMetrics{PollCount: 4})
+	require.NoError(t, NewClient(server.URL, key, log).SendBatch(t.Context(), batch))
+
+	assertMetric(t, server.URL, "gauge", "Alloc", "100.5")
+	assertMetric(t, server.URL, "counter", "PollCount", "4")
+
+	// Агент с чужим ключом получает 400 и метрики не меняет.
+	stale := BuildBatch(GaugeMetrics{Alloc: 999}, CountMetrics{PollCount: 100})
+	require.Error(t, NewClient(server.URL, "wrong-key", log).SendBatch(t.Context(), stale))
+	assertMetric(t, server.URL, "gauge", "Alloc", "100.5")
+
+	// Ответ сервера тоже подписан.
+	resp, err := http.Get(server.URL + "/value/gauge/Alloc")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, hash.Sign(body, key), resp.Header.Get(hash.Header))
 }
 
 func TestClientDoesNotSendOnCancelledContext(t *testing.T) {
@@ -90,9 +131,9 @@ func TestClientDoesNotSendOnCancelledContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, slog.Default())
+	client := NewClient(server.URL, "", slog.Default())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	require.ErrorIs(t, client.SendGauge(ctx, "Alloc", 1), context.Canceled)
@@ -110,9 +151,9 @@ func TestClientAbortsInFlightRequestOnCancel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, slog.Default())
+	client := NewClient(server.URL, "", slog.Default())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		cancel()

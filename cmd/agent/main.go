@@ -22,24 +22,27 @@ func main() {
 		slog.String("server_address", cfg.Address),
 		slog.Int("poll_interval", cfg.PollInterval),
 		slog.Int("report_interval", cfg.ReportInterval),
+		slog.Int("rate_limit", cfg.RateLimit),
+		slog.Bool("signing_enabled", cfg.Key != ""),
 	)
 
-	client := agent.NewClient("http://"+cfg.Address, log)
-	runner := agent.NewRunner(client, log, time.Duration(cfg.PollInterval)*time.Second, time.Duration(cfg.ReportInterval)*time.Second)
+	client := agent.NewClient("http://"+cfg.Address, cfg.Key, log)
+	runner, err := agent.NewRunner(
+		client,
+		log,
+		time.Duration(cfg.PollInterval)*time.Second,
+		time.Duration(cfg.ReportInterval)*time.Second,
+		cfg.RateLimit,
+	)
+	if err != nil {
+		log.Error("invalid configuration", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
-		ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	runner.Start(ctx)
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	<-sigChan
-	log.Info("shutting down agent...")
-	cancel()
-
-	time.Sleep(100 * time.Millisecond)
+	runner.Run(ctx)
 
 	log.Info("agent stopped")
 }

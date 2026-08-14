@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/d2cTool/rtmetrics/internal/hash"
 	m "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/retry"
 	"github.com/go-resty/resty/v2"
@@ -18,9 +19,12 @@ import (
 type Client struct {
 	client *resty.Client
 	logger *slog.Logger
+	key    string
 }
 
-func NewClient(baseURL string, logger *slog.Logger) *Client {
+// NewClient создаёт клиента агента. Непустой key включает подпись запросов
+// заголовком HashSHA256.
+func NewClient(baseURL, key string, logger *slog.Logger) *Client {
 	client := resty.New().
 		SetBaseURL(baseURL).
 		SetRetryCount(0)
@@ -28,6 +32,7 @@ func NewClient(baseURL string, logger *slog.Logger) *Client {
 	return &Client{
 		client: client,
 		logger: logger,
+		key:    key,
 	}
 }
 
@@ -42,11 +47,17 @@ func isRetriableNetworkError(err error) bool {
 	return errors.As(err, &netErr)
 }
 
-func (c *Client) post(ctx context.Context, path string, headers map[string]string, body any) error {
+// post отправляет body, подписывая signPayload. Для сжатых запросов это разные
+// байты: сервер считает хеш после распаковки, поэтому подписывать нужно
+// исходный JSON, а не gzip-поток.
+func (c *Client) post(ctx context.Context, path string, headers map[string]string, body, signPayload []byte) error {
 	return retry.Do(ctx, isRetriableNetworkError, func() error {
 		req := c.client.R().SetContext(ctx)
 		for k, v := range headers {
 			req.SetHeader(k, v)
+		}
+		if c.key != "" {
+			req.SetHeader(hash.Header, hash.Sign(signPayload, c.key))
 		}
 		resp, err := req.SetBody(body).Post(path)
 		if err != nil {
@@ -60,8 +71,11 @@ func (c *Client) post(ctx context.Context, path string, headers map[string]strin
 }
 
 func (c *Client) SendGauge(ctx context.Context, name string, value float64) error {
-	body := m.NewGauge(name, value)
-	if err := c.post(ctx, "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
+	body, err := json.Marshal(m.NewGauge(name, value))
+	if err != nil {
+		return fmt.Errorf("failed to marshal gauge %s: %w", name, err)
+	}
+	if err := c.post(ctx, "/update", map[string]string{"Content-Type": "application/json"}, body, body); err != nil {
 		return fmt.Errorf("failed to send gauge %s: %w", name, err)
 	}
 	c.logger.Debug("gauge sent", slog.String("name", name), slog.Float64("value", value))
@@ -69,8 +83,11 @@ func (c *Client) SendGauge(ctx context.Context, name string, value float64) erro
 }
 
 func (c *Client) SendCounter(ctx context.Context, name string, value int64) error {
-	body := m.NewCounter(name, value)
-	if err := c.post(ctx, "/update", map[string]string{"Content-Type": "application/json"}, body); err != nil {
+	body, err := json.Marshal(m.NewCounter(name, value))
+	if err != nil {
+		return fmt.Errorf("failed to marshal counter %s: %w", name, err)
+	}
+	if err := c.post(ctx, "/update", map[string]string{"Content-Type": "application/json"}, body, body); err != nil {
 		return fmt.Errorf("failed to send counter %s: %w", name, err)
 	}
 	c.logger.Debug("counter sent", slog.String("name", name), slog.Int64("value", value))
@@ -100,7 +117,7 @@ func (c *Client) SendBatch(ctx context.Context, metrics []m.Metrics) error {
 		"Content-Type":     "application/json",
 		"Content-Encoding": "gzip",
 	}
-	if err := c.post(ctx, "/updates/", headers, buf.Bytes()); err != nil {
+	if err := c.post(ctx, "/updates/", headers, buf.Bytes(), data); err != nil {
 		return fmt.Errorf("failed to send metrics batch: %w", err)
 	}
 

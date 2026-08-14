@@ -29,6 +29,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/handler/post"
 	"github.com/d2cTool/rtmetrics/internal/middleware/compress"
 	"github.com/d2cTool/rtmetrics/internal/middleware/logger"
+	"github.com/d2cTool/rtmetrics/internal/middleware/sign"
 	"github.com/d2cTool/rtmetrics/internal/server"
 )
 
@@ -47,6 +48,7 @@ func main() {
 		slog.Int("db_max_idle_conns", cfg.Database.MaxIdleConns),
 		slog.Duration("db_conn_max_idle_time", cfg.Database.ConnMaxIdleTime),
 		slog.Duration("db_conn_max_lifetime", cfg.Database.ConnMaxLifetime),
+		slog.Bool("signing_enabled", cfg.Key != ""),
 	)
 
 	var db *sql.DB
@@ -103,7 +105,7 @@ func main() {
 		pinger = db
 	}
 
-	router := createRouter(log, svc, pinger)
+	router := createRouter(log, svc, pinger, cfg.Key)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -140,11 +142,14 @@ func main() {
 	log.Info("server stopped")
 }
 
-func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger) *chi.Mux {
+func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
 	router.Use(compress.New(log))
+	if key != "" {
+		router.Use(sign.New(log, key))
+	}
 
 	router.Get("/ping", ping.New(log, pinger))
 

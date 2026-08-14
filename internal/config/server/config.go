@@ -17,6 +17,7 @@ type ServerConfig struct {
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
+	Key             string `env:"KEY"`
 }
 
 type HTTPServerConfig struct {
@@ -36,6 +37,7 @@ func Load() *ServerConfig {
 	flag.StringVar(&cfg.FileStoragePath, "f", "./tmp/data", "file storage path")
 	flag.BoolVar(&cfg.Restore, "r", false, "restore")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN (PostgreSQL)")
+	flag.StringVar(&cfg.Key, "k", "", "key for request signing (HMAC-SHA256)")
 	flag.IntVar(&cfg.Database.MaxOpenConns, "db-max-open-conns", dbCfg.MaxOpenConns, "database max open connections")
 	flag.IntVar(&cfg.Database.MaxIdleConns, "db-max-idle-conns", dbCfg.MaxIdleConns, "database max idle connections")
 	flag.DurationVar(&cfg.Database.ConnMaxIdleTime, "db-conn-max-idle-time", dbCfg.ConnMaxIdleTime, "database connection max idle time")
