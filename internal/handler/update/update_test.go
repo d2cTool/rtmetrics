@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/d2cTool/rtmetrics/internal/audit"
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -375,4 +376,53 @@ func TestNew_ContentTypeWithCharset_Accepted(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Delta)
 	assert.Equal(t, int64(7), *resp.Delta)
+}
+
+type recordingObserver struct {
+	events []audit.Event
+}
+
+func (o *recordingObserver) Observe(event audit.Event) {
+	o.events = append(o.events, event)
+}
+
+func TestNewWithAuditNotifiesAfterSuccessfulSave(t *testing.T) {
+	repo := newMockRepository()
+	rec := &recordingObserver{}
+	subject := audit.NewSubject()
+	subject.Subscribe(rec)
+
+	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(`{"id":"Alloc","type":"gauge","value":1.5}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "192.168.0.42:1234"
+	w := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Post("/update", NewWithAudit(slog.Default(), service.New(repo), subject))
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, rec.events, 1)
+	assert.Equal(t, []string{"Alloc"}, rec.events[0].Metrics)
+	assert.Equal(t, "192.168.0.42", rec.events[0].IPAddress)
+	assert.Positive(t, rec.events[0].TS)
+}
+
+func TestNewWithAuditDoesNotNotifyOnHandlerError(t *testing.T) {
+	rec := &recordingObserver{}
+	subject := audit.NewSubject()
+	subject.Subscribe(rec)
+
+	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(`{"id":"Alloc","type":"unknown"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Post("/update", NewWithAudit(slog.Default(), service.New(newMockRepository()), subject))
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Empty(t, rec.events)
 }

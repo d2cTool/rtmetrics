@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/d2cTool/rtmetrics/internal/audit"
 	"github.com/d2cTool/rtmetrics/internal/config/common"
 	config "github.com/d2cTool/rtmetrics/internal/config/server"
 	"github.com/d2cTool/rtmetrics/internal/database"
@@ -49,6 +50,8 @@ func main() {
 		slog.Duration("db_conn_max_idle_time", cfg.Database.ConnMaxIdleTime),
 		slog.Duration("db_conn_max_lifetime", cfg.Database.ConnMaxLifetime),
 		slog.Bool("signing_enabled", cfg.Key != ""),
+		slog.String("audit_file", cfg.AuditFile),
+		slog.String("audit_url", cfg.AuditURL),
 	)
 
 	var db *sql.DB
@@ -105,7 +108,7 @@ func main() {
 		pinger = db
 	}
 
-	router := createRouter(log, svc, pinger, cfg.Key)
+	router := createRouter(log, svc, pinger, cfg.Key, newAuditor(log, cfg.AuditFile, cfg.AuditURL))
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -142,7 +145,24 @@ func main() {
 	log.Info("server stopped")
 }
 
-func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string) *chi.Mux {
+func newAuditor(log *slog.Logger, file, url string) *audit.Subject {
+	if file == "" && url == "" {
+		return nil
+	}
+
+	subject := audit.NewSubject()
+	if file != "" {
+		subject.Subscribe(audit.NewFileObserver(file, log))
+		log.Info("audit file observer enabled", slog.String("path", file))
+	}
+	if url != "" {
+		subject.Subscribe(audit.NewHTTPObserver(url, log))
+		log.Info("audit http observer enabled", slog.String("url", url))
+	}
+	return subject
+}
+
+func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string, auditor *audit.Subject) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
@@ -153,15 +173,15 @@ func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Ping
 
 	router.Get("/ping", ping.New(log, pinger))
 
-	router.Post("/update", update.New(log, svc))
-	router.Post("/update/", update.New(log, svc))
-	router.Post("/updates", updates.New(log, svc))
-	router.Post("/updates/", updates.New(log, svc))
+	router.Post("/update", update.NewWithAudit(log, svc, auditor))
+	router.Post("/update/", update.NewWithAudit(log, svc, auditor))
+	router.Post("/updates", updates.NewWithAudit(log, svc, auditor))
+	router.Post("/updates/", updates.NewWithAudit(log, svc, auditor))
 	router.Post("/value", value.New(log, svc))
 	router.Post("/value/", value.New(log, svc))
 
-	router.Post("/update/{mtype}/{name}/{value}", post.New(log, svc))
-	router.Post("/{mtype}/{name}/{value}", post.New(log, svc))
+	router.Post("/update/{mtype}/{name}/{value}", post.NewWithAudit(log, svc, auditor))
+	router.Post("/{mtype}/{name}/{value}", post.NewWithAudit(log, svc, auditor))
 	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	router.Get("/value/{mtype}/{name}", get.New(log, svc))

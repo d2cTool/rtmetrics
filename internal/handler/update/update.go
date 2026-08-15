@@ -7,12 +7,17 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/d2cTool/rtmetrics/internal/audit"
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
+	return NewWithAudit(log, svc, nil)
+}
+
+func NewWithAudit(log *slog.Logger, svc service.MetricsService, auditor *audit.Subject) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.update.new"
 		log = log.With(
@@ -89,6 +94,7 @@ func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 			slog.String("mtype", req.MType),
 			slog.String("name", req.ID),
 		)
+		auditor.NotifyRequest(r, []string{req.ID})
 
 		var buf bytes.Buffer
 		if err := json.NewEncoder(&buf).Encode(resp); err != nil {
