@@ -14,6 +14,11 @@ func New(log *slog.Logger) func(next http.Handler) http.Handler {
 		log.Info("logger middleware enabled")
 
 		fn := func(w http.ResponseWriter, r *http.Request) {
+			if !log.Enabled(r.Context(), slog.LevelDebug) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			entry := log.With(
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
@@ -25,7 +30,7 @@ func New(log *slog.Logger) func(next http.Handler) http.Handler {
 			t1 := time.Now()
 
 			defer func() {
-				entry.Info("request completed",
+				entry.Debug("request completed",
 					slog.Int("status", ww.Status()),
 					slog.Int("bytes", ww.BytesWritten()),
 					slog.String("elapsed", time.Since(t1).String()),

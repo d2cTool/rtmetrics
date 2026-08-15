@@ -1,7 +1,6 @@
 package update
 
 import (
-	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -90,23 +89,19 @@ func NewWithAudit(log *slog.Logger, svc service.MetricsService, auditor *audit.S
 			resp = &metrics.Metrics{ID: req.ID, MType: metrics.Gauge, Value: &newValue}
 		}
 
-		log.Info("data saved",
+		log.Debug("data saved",
 			slog.String("mtype", req.MType),
 			slog.String("name", req.ID),
 		)
 		auditor.NotifyRequest(r, []string{req.ID})
 
-		var buf bytes.Buffer
-		if err := json.NewEncoder(&buf).Encode(resp); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			log.Error("cannot encode response JSON body",
 				slog.String("error", err.Error()),
 			)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write(buf.Bytes())
 	}
 }

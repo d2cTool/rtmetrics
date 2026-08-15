@@ -31,13 +31,7 @@ func (s *MemStorage) SaveCounter(ctx context.Context, name string, value int64) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	v, e := s.Counters[name]
-	if e {
-		s.Counters[name] = v + value
-	} else {
-		s.Counters[name] = value
-	}
-
+	s.Counters[name] += value
 	return s.Counters[name], nil
 }
 

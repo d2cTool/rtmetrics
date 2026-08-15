@@ -88,7 +88,7 @@ func NewWithAudit(log *slog.Logger, svc service.MetricsService, auditor *audit.S
 			resp = strconv.FormatFloat(newValue, 'f', -1, 64)
 		}
 
-		log.Info("data saved",
+		log.Debug("data saved",
 			slog.String("mtype", mtype),
 			slog.String("name", name),
 			slog.String("value", valueStr),

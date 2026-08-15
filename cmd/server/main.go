@@ -171,6 +171,8 @@ func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Ping
 		router.Use(sign.New(log, key))
 	}
 
+	router.Mount("/debug", middleware.Profiler())
+
 	router.Get("/ping", ping.New(log, pinger))
 
 	router.Post("/update", update.NewWithAudit(log, svc, auditor))

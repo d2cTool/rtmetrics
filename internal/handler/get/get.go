@@ -1,6 +1,7 @@
 package get
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -66,6 +67,6 @@ func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(resp))
+		_, _ = io.WriteString(w, resp)
 	}
 }

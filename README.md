@@ -42,3 +42,68 @@ git fetch template && git checkout template/v2 .github
 - **Clean Architecture**
 - **Hexagonal Architecture**
 - **Layered Architecture**
+
+## Бенчмарки
+
+Горячие пути покрыты бенчмарками:
+
+| Пакет | Что измеряем |
+|---|---|
+| `internal/agent` | сбор runtime-метрик, сборка батча |
+| `internal/storage` | запись/чтение in-memory хранилища |
+| `internal/hash` | HMAC-SHA256 подпись и проверка |
+| `internal/handler/update` | JSON-хендлер `/update` |
+| `internal/handler/html` | HTML-дашборд |
+
+```
+go test -run '^$' -bench . -benchmem ./internal/agent ./internal/storage ./internal/hash ./internal/handler/update ./internal/handler/html
+```
+
+После оптимизации `BuildBatch` (указатели на поля структуры вместо `NewGauge` на каждую метрику):
+
+```
+BenchmarkBuildBatch-8    1845003    637.9 ns/op    2280 B/op    3 allocs/op
+```
+
+Было: `2067 ns/op`, `6376 B/op`, `31 allocs/op`.
+
+Дополнительно убраны лишние буферы в HTML- и JSON-хендлерах и промежуточный слайс в `hash.Sign`.
+
+## Профиль памяти
+
+Профили — heap живого сервера **во время нагрузки**, не микробенчмарк. Вход — реалистичный батч агента (29 метрик: runtime gauges + `PollCount`) в `profiles/testdata/batch.json`.
+
+Нагрузка: [hey](https://github.com/rakyll/hey), параллельно `POST /updates/` и `GET /` (дашборд уже непустой после warmup). Снимок `GET /debug/pprof/heap` через 2 с после старта hey, пока запросы ещё идут.
+
+```
+go install github.com/rakyll/hey@latest
+powershell -File profiles/capture.ps1 -OutFile profiles/base.pprof
+# оптимизация
+powershell -File profiles/capture.ps1 -OutFile profiles/result.pprof
+go tool pprof -top -diff_base=profiles/base.pprof profiles/result.pprof
+```
+
+`top` / `list` / `peek` по `base.pprof`: удерживаемая память на горячем пути — `slog` (`Logger.Info`, `Logger.With`, `buffer.Write`) и `chi` middleware. На каждый запрос писался access-лог уровня Info и создавался `log.With`.
+
+Что убрано под эту нагрузку:
+
+- access-лог и успешные «data saved» / «html rendered» переведены на Debug; при уровне Info `With` не вызывается;
+- `gzip.Writer` и карта compressible-типов больше не создаются на каждый ответ;
+- слайс имён для аудита собирается, только если аудит включён.
+
+Вывод `go tool pprof -top -diff_base=profiles/base.pprof profiles/result.pprof`:
+
+```
+File: server.exe
+Type: inuse_space
+Showing nodes accounting for -561.54kB, 17.95% of 3128.59kB total
+      flat  flat%   sum%        cum   cum%
+-1056.33kB 33.76% 33.76% -1056.33kB 33.76%  log/slog/internal/buffer.(*Buffer).Write
+ -532.26kB 17.01% 50.78%  -532.26kB 17.01%  log/slog/internal/buffer.(*Buffer).WriteString
+    -514kB 16.43% 50.71%     -514kB 16.43%  bufio.NewReaderSize
+         0     0% 17.95% -1588.59kB 50.78%  github.com/go-chi/chi/v5.(*Mux).ServeHTTP
+         0     0% 17.95% -1056.33kB 33.76%  log/slog.(*Logger).Info
+         0     0% 17.95%  -532.26kB 17.01%  log/slog.(*Logger).With
+```
+
+Отрицательные значения — меньше удерживаемой памяти на том же сценарии. Под нагрузкой latency `POST /updates/` упала с ~430 ms до ~2 ms (hey перестал упираться в синхронный лог в консоль).
