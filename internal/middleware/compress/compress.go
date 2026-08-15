@@ -1,3 +1,4 @@
+// Package compress — gzip для входящих тел и исходящих HTML/JSON.
 package compress
 
 import (
@@ -24,6 +25,7 @@ var compressibleTypes = map[string]bool{
 	"application/json": true,
 }
 
+// New распаковывает gzip-тело запроса и сжимает HTML/JSON-ответы, если клиент их принимает.
 func New(log *slog.Logger) func(next http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {

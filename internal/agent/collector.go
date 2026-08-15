@@ -1,3 +1,4 @@
+// Package agent собирает runtime/system метрики и отправляет их на сервер.
 package agent
 
 import (
@@ -7,10 +8,12 @@ import (
 	m "github.com/d2cTool/rtmetrics/internal/model"
 )
 
+// CountMetrics — счётчики агента. PollCount растёт с каждым опросом runtime.
 type CountMetrics struct {
 	PollCount int64
 }
 
+// GaugeMetrics — снимок runtime.MemStats и RandomValue для отправки на сервер.
 type GaugeMetrics struct {
 	Alloc         float64
 	BuckHashSys   float64
@@ -42,6 +45,7 @@ type GaugeMetrics struct {
 	RandomValue   float64
 }
 
+// Collect читает runtime.MemStats и возвращает набор gauge для отчёта.
 func Collect() GaugeMetrics {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -114,6 +118,7 @@ func (g GaugeMetrics) Gauges() []m.Metrics {
 	)
 }
 
+// BuildBatch склеивает runtime-gauge и PollCount в один слайс для POST /updates/.
 func BuildBatch(gauges GaugeMetrics, counters CountMetrics) []m.Metrics {
 	batch := gauges.Gauges()
 	delta := counters.PollCount

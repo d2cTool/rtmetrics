@@ -1,3 +1,4 @@
+// Package ping реализует GET /ping — проверка соединения с PostgreSQL.
 package ping
 
 import (
@@ -9,10 +10,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// Pinger проверяет доступность хранилища. Обычно это *sql.DB.
 type Pinger interface {
 	PingContext(ctx context.Context) error
 }
 
+// New возвращает хендлер GET /ping. Без настроенной БД отвечает 500.
 func New(log *slog.Logger, db Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.ping.new"

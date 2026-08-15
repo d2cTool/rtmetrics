@@ -1,3 +1,4 @@
+// Package common — общие константы окружения и настройка логгера.
 package common
 
 import (
@@ -6,10 +7,13 @@ import (
 )
 
 const (
+	// EnvLocal — текстовые логи уровня Info (стенд, разработка).
 	EnvLocal = "local"
-	EnvProd  = "prod"
+	// EnvProd — JSON-логи уровня Info.
+	EnvProd = "prod"
 )
 
+// SetupLogger возвращает slog.Logger для env (local или prod).
 func SetupLogger(env string) *slog.Logger {
 	var log *slog.Logger
 

@@ -1,3 +1,4 @@
+// Package config загружает конфигурацию HTTP-сервера из флагов и окружения.
 package config
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/database"
 )
 
+// ServerConfig — флаги и переменные окружения процесса сервера.
 type ServerConfig struct {
 	Env             string
 	HTTPServer      *HTTPServerConfig
@@ -22,6 +24,7 @@ type ServerConfig struct {
 	AuditURL        string `env:"AUDIT_URL"`
 }
 
+// HTTPServerConfig — адрес и таймауты http.Server.
 type HTTPServerConfig struct {
 	Address      string `env:"ADDRESS"`
 	ReadTimeout  time.Duration
@@ -29,6 +32,7 @@ type HTTPServerConfig struct {
 	IdleTimeout  time.Duration
 }
 
+// Load читает флаги, затем перекрывает их переменными окружения.
 func Load() *ServerConfig {
 	var httpSrv = HTTPServerConfig{Address: "localhost:8080", ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	var dbCfg = database.DefaultConfig()

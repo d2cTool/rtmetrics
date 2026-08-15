@@ -1,3 +1,4 @@
+// Package retry повторяет функцию с паузами 1s, 3s, 5s, пока ошибка ретрабельна.
 package retry
 
 import (
@@ -11,6 +12,7 @@ var defaultDelays = []time.Duration{
 	5 * time.Second,
 }
 
+// Do вызывает fn. При ретрабельной ошибке ждёт и повторяет, пока ctx не отменён.
 func Do(ctx context.Context, isRetriable func(error) bool, fn func() error) error {
 	if err := ctx.Err(); err != nil {
 		return err

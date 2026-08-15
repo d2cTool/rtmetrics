@@ -1,3 +1,4 @@
+// Package html реализует GET / — HTML-дашборд метрик.
 package html
 
 import (
@@ -9,11 +10,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// PageData — данные HTML-дашборда GET /.
 type PageData struct {
 	Counters map[string]int64
 	Gauges   map[string]float64
 }
 
+// New возвращает хендлер GET /: HTML-таблица всех метрик.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	tmpl := `<!DOCTYPE html>
 <html>

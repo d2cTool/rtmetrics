@@ -7,6 +7,7 @@ import (
 	"sync"
 )
 
+// FileObserver дописывает событие в конец файла одной JSON-строкой.
 type FileObserver struct {
 	path string
 	log  *slog.Logger

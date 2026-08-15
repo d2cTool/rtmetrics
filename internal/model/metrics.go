@@ -1,15 +1,17 @@
+// Package model описывает метрики, которыми обмениваются агент и сервер.
 package model
 
 const (
+	// Counter — накопительный тип метрики. Повторная запись прибавляет delta.
 	Counter = "counter"
-	Gauge   = "gauge"
+	// Gauge — мгновенное значение. Повторная запись заменяет предыдущее.
+	Gauge = "gauge"
 )
 
-// NOTE: Не усложняем пример, вводя иерархическую вложенность структур.
-// Органичиваясь плоской моделью.
-// Delta и Value объявлены через указатели,
-// что бы отличать значение "0", от не заданного значения
-// и соответственно не кодировать в структуру.
+// Metrics — JSON-представление одной метрики в API /update, /updates и /value.
+//
+// Delta и Value — указатели, чтобы отличить ноль от «поле не задано»
+// и не кодировать пустые поля в JSON.
 type Metrics struct {
 	ID    string   `json:"id"`
 	MType string   `json:"type"`
@@ -18,6 +20,7 @@ type Metrics struct {
 	Hash  string   `json:"hash,omitempty"`
 }
 
+// NewCounter собирает counter с именем id и приращением delta.
 func NewCounter(id string, delta int64) *Metrics {
 	return &Metrics{
 		ID:    id,
@@ -26,6 +29,7 @@ func NewCounter(id string, delta int64) *Metrics {
 	}
 }
 
+// NewGauge собирает gauge с именем id и значением value.
 func NewGauge(id string, value float64) *Metrics {
 	return &Metrics{
 		ID:    id,

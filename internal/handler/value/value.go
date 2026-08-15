@@ -1,3 +1,4 @@
+// Package value реализует POST /value — чтение метрики по JSON.
 package value
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// New возвращает хендлер POST /value: JSON с id и type, в ответе — полная метрика.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.value.new"

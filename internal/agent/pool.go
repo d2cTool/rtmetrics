@@ -9,6 +9,7 @@ import (
 	m "github.com/d2cTool/rtmetrics/internal/model"
 )
 
+// WorkerPool ограничивает число одновременных исходящих запросов агента.
 type WorkerPool struct {
 	client  *Client
 	logger  *slog.Logger
@@ -18,6 +19,7 @@ type WorkerPool struct {
 	once    sync.Once
 }
 
+// NewWorkerPool создаёт пул. workers должен быть >= 1.
 func NewWorkerPool(client *Client, logger *slog.Logger, workers int) (*WorkerPool, error) {
 	if workers < 1 {
 		return nil, fmt.Errorf("rate limit must be >= 1, got %d", workers)
@@ -31,10 +33,12 @@ func NewWorkerPool(client *Client, logger *slog.Logger, workers int) (*WorkerPoo
 	}, nil
 }
 
+// Workers возвращает размер пула.
 func (p *WorkerPool) Workers() int {
 	return p.workers
 }
 
+// Start запускает воркеры. Останавливаются по ctx или Stop.
 func (p *WorkerPool) Start(ctx context.Context) {
 	p.wg.Add(p.workers)
 	for i := range p.workers {
@@ -44,6 +48,7 @@ func (p *WorkerPool) Start(ctx context.Context) {
 	p.logger.Info("worker pool started", slog.Int("workers", p.workers))
 }
 
+// Submit ставит батч в очередь. false, если ctx уже отменён.
 func (p *WorkerPool) Submit(ctx context.Context, batch []m.Metrics) bool {
 	if len(batch) == 0 {
 		return true
@@ -63,6 +68,7 @@ func (p *WorkerPool) Submit(ctx context.Context, batch []m.Metrics) bool {
 	}
 }
 
+// Stop закрывает очередь и ждёт воркеров. Повторный вызов безопасен.
 func (p *WorkerPool) Stop() {
 	p.once.Do(func() {
 		close(p.jobs)

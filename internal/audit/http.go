@@ -10,6 +10,7 @@ import (
 
 const httpTimeout = 3 * time.Second
 
+// HTTPObserver отправляет событие POST-ом на заданный URL.
 type HTTPObserver struct {
 	url    string
 	client *http.Client

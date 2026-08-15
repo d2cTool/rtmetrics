@@ -1,3 +1,4 @@
+// Package update реализует POST /update — запись одной метрики в JSON.
 package update
 
 import (
@@ -12,10 +13,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// New возвращает хендлер POST /update и POST /update/: JSON одной метрики.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	return NewWithAudit(log, svc, nil)
 }
 
+// NewWithAudit как New, после успешного сохранения уведомляет auditor.
 func NewWithAudit(log *slog.Logger, svc service.MetricsService, auditor *audit.Subject) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.update.new"
