@@ -390,6 +390,7 @@ func TestNewWithAuditNotifiesAfterSuccessfulSave(t *testing.T) {
 	repo := newMockRepository()
 	rec := &recordingObserver{}
 	subject := audit.NewSubject()
+	t.Cleanup(subject.Close)
 	subject.Subscribe(rec)
 
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(`{"id":"Alloc","type":"gauge","value":1.5}`))
@@ -401,6 +402,7 @@ func TestNewWithAuditNotifiesAfterSuccessfulSave(t *testing.T) {
 	r.Use(middleware.RequestID)
 	r.Post("/update", NewWithAudit(slog.Default(), service.New(repo), subject))
 	r.ServeHTTP(w, req)
+	subject.Close()
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, rec.events, 1)
@@ -412,6 +414,7 @@ func TestNewWithAuditNotifiesAfterSuccessfulSave(t *testing.T) {
 func TestNewWithAuditDoesNotNotifyOnHandlerError(t *testing.T) {
 	rec := &recordingObserver{}
 	subject := audit.NewSubject()
+	t.Cleanup(subject.Close)
 	subject.Subscribe(rec)
 
 	req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(`{"id":"Alloc","type":"unknown"}`))
@@ -422,6 +425,7 @@ func TestNewWithAuditDoesNotNotifyOnHandlerError(t *testing.T) {
 	r.Use(middleware.RequestID)
 	r.Post("/update", NewWithAudit(slog.Default(), service.New(newMockRepository()), subject))
 	r.ServeHTTP(w, req)
+	subject.Close()
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Empty(t, rec.events)

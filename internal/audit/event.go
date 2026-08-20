@@ -18,11 +18,11 @@ func NewEvent(r *http.Request, names []string) Event {
 	return Event{
 		TS:        time.Now().Unix(),
 		Metrics:   names,
-		IPAddress: ClientIP(r),
+		IPAddress: clientIP(r),
 	}
 }
 
-func ClientIP(r *http.Request) string {
+func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

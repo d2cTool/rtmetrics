@@ -9,13 +9,17 @@ import (
 
 // FileObserver дописывает событие в конец файла одной JSON-строкой.
 type FileObserver struct {
-	path string
+	file *os.File
 	log  *slog.Logger
 	mu   sync.Mutex
 }
 
-func NewFileObserver(path string, log *slog.Logger) *FileObserver {
-	return &FileObserver{path: path, log: log}
+func NewFileObserver(path string, log *slog.Logger) (*FileObserver, error) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	return &FileObserver{file: f, log: log}, nil
 }
 
 func (o *FileObserver) Observe(event Event) {
@@ -27,15 +31,29 @@ func (o *FileObserver) Observe(event Event) {
 
 	o.mu.Lock()
 	defer o.mu.Unlock()
-
-	f, err := os.OpenFile(o.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		o.log.Error("failed to open audit file", slog.String("path", o.path), slog.String("error", err.Error()))
+	if o.file == nil {
 		return
 	}
-	defer f.Close()
 
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		o.log.Error("failed to write audit event", slog.String("path", o.path), slog.String("error", err.Error()))
+	if _, err := o.file.Write(append(line, '\n')); err != nil {
+		o.log.Error("failed to write audit event",
+			slog.String("path", o.file.Name()),
+			slog.String("error", err.Error()),
+		)
 	}
+}
+
+// Close закрывает файл. Повторный вызов безопасен.
+func (o *FileObserver) Close() error {
+	if o == nil {
+		return nil
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.file == nil {
+		return nil
+	}
+	err := o.file.Close()
+	o.file = nil
+	return err
 }
