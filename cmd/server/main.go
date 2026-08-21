@@ -108,7 +108,10 @@ func main() {
 		pinger = db
 	}
 
-	router := createRouter(log, svc, pinger, cfg.Key, newAuditor(log, cfg.AuditFile, cfg.AuditURL))
+	auditor := newAuditor(log, cfg.AuditFile, cfg.AuditURL)
+	defer auditor.Close()
+
+	router := createRouter(log, svc, pinger, cfg.Key, auditor)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -151,13 +154,25 @@ func newAuditor(log *slog.Logger, file, url string) *audit.Subject {
 	}
 
 	subject := audit.NewSubject()
+	n := 0
 	if file != "" {
-		subject.Subscribe(audit.NewFileObserver(file, log))
-		log.Info("audit file observer enabled", slog.String("path", file))
+		obs, err := audit.NewFileObserver(file, log)
+		if err != nil {
+			log.Error("failed to open audit file", slog.String("path", file), slog.String("error", err.Error()))
+		} else {
+			subject.Subscribe(obs)
+			log.Info("audit file observer enabled", slog.String("path", file))
+			n++
+		}
 	}
 	if url != "" {
 		subject.Subscribe(audit.NewHTTPObserver(url, log))
 		log.Info("audit http observer enabled", slog.String("url", url))
+		n++
+	}
+	if n == 0 {
+		subject.Close()
+		return nil
 	}
 	return subject
 }
