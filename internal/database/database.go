@@ -1,3 +1,4 @@
+// Package database открывает пул PostgreSQL (pgx stdlib) и проверяет его ping-ом.
 package database
 
 import (
@@ -17,6 +18,7 @@ type Config struct {
 	PingTimeout     time.Duration `env:"DATABASE_PING_TIMEOUT"`
 }
 
+// DefaultConfig возвращает размеры пула и таймауты по умолчанию.
 func DefaultConfig() *Config {
 	return &Config{
 		MaxOpenConns:    10,
@@ -56,6 +58,7 @@ func (c *Config) normalized() Config {
 	return cfg
 }
 
+// New открывает пул по dsn, применяет cfg и проверяет соединение ping-ом.
 func New(ctx context.Context, dsn string, cfg *Config) (*sql.DB, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {

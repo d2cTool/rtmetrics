@@ -11,6 +11,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/hash"
 )
 
+// New возвращает middleware подписи. Подключать только при непустом key.
 func New(log *slog.Logger, key string) func(next http.Handler) http.Handler {
 	log = log.With(slog.String("component", "middleware/sign"))
 	log.Info("sign middleware enabled")

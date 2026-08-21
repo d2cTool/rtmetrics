@@ -1,7 +1,7 @@
+// Package html реализует GET / — HTML-дашборд метрик.
 package html
 
 import (
-	"bytes"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -10,11 +10,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// PageData — данные HTML-дашборда GET /.
 type PageData struct {
 	Counters map[string]int64
 	Gauges   map[string]float64
 }
 
+// New возвращает хендлер GET /: HTML-таблица всех метрик.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	tmpl := `<!DOCTYPE html>
 <html>
@@ -68,39 +70,33 @@ func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.html.new"
-		log = log.With(
-			slog.String("op", op),
-			slog.String("request_id", middleware.GetReqID(r.Context())),
-		)
+		reqLog := log
+		if log.Enabled(r.Context(), slog.LevelDebug) {
+			reqLog = log.With(
+				slog.String("op", op),
+				slog.String("request_id", middleware.GetReqID(r.Context())),
+			)
+		}
 
 		counters, err := svc.GetAllCounters(r.Context())
 		if err != nil {
-			log.Error("failed to get counters", slog.String("error", err.Error()))
+			reqLog.Error("failed to get counters", slog.String("error", err.Error()))
 			counters = make(map[string]int64)
 		}
 
 		gauges, err := svc.GetAllGauges(r.Context())
 		if err != nil {
-			log.Error("failed to get gauges", slog.String("error", err.Error()))
+			reqLog.Error("failed to get gauges", slog.String("error", err.Error()))
 			gauges = make(map[string]float64)
 		}
 
-		data := PageData{
-			Counters: counters,
-			Gauges:   gauges,
-		}
-
-		var buf bytes.Buffer
-		if err := t.Execute(&buf, data); err != nil {
-			log.Error("failed to execute template", slog.String("error", err.Error()))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := t.Execute(w, PageData{Counters: counters, Gauges: gauges}); err != nil {
+			reqLog.Error("failed to execute template", slog.String("error", err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write(buf.Bytes())
-
-		log.Info("html page rendered")
+		reqLog.Debug("html page rendered")
 	}
 }

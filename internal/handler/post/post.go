@@ -1,3 +1,4 @@
+// Package post реализует POST /update/{mtype}/{name}/{value}.
 package post
 
 import (
@@ -5,13 +6,20 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/d2cTool/rtmetrics/internal/audit"
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// New возвращает хендлер POST /update/{mtype}/{name}/{value}.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
+	return NewWithAudit(log, svc, nil)
+}
+
+// NewWithAudit как New, после успешного сохранения уведомляет auditor.
+func NewWithAudit(log *slog.Logger, svc service.MetricsService, auditor *audit.Subject) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.post.new"
 		log = log.With(
@@ -83,12 +91,13 @@ func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 			resp = strconv.FormatFloat(newValue, 'f', -1, 64)
 		}
 
-		log.Info("data saved",
+		log.Debug("data saved",
 			slog.String("mtype", mtype),
 			slog.String("name", name),
 			slog.String("value", valueStr),
 			slog.String("new_value", resp),
 		)
+		auditor.NotifyRequest(r, []string{name})
 
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)

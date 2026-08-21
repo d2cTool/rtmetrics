@@ -15,7 +15,9 @@ const Header = "HashSHA256"
 func Sign(data []byte, key string) string {
 	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write(data)
-	return hex.EncodeToString(mac.Sum(nil))
+	var sum [sha256.Size]byte
+	mac.Sum(sum[:0])
+	return hex.EncodeToString(sum[:])
 }
 
 // Valid сообщает, соответствует ли подпись signature данным data.
@@ -28,5 +30,7 @@ func Valid(data []byte, key, signature string) bool {
 
 	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write(data)
-	return hmac.Equal(got, mac.Sum(nil))
+	var sum [sha256.Size]byte
+	mac.Sum(sum[:0])
+	return hmac.Equal(got, sum[:])
 }

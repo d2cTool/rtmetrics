@@ -1,3 +1,4 @@
+// Package config загружает конфигурацию HTTP-сервера из флагов и окружения.
 package config
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/database"
 )
 
+// ServerConfig — флаги и переменные окружения процесса сервера.
 type ServerConfig struct {
 	Env             string
 	HTTPServer      *HTTPServerConfig
@@ -18,8 +20,11 @@ type ServerConfig struct {
 	Restore         bool   `env:"RESTORE"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	Key             string `env:"KEY"`
+	AuditFile       string `env:"AUDIT_FILE"`
+	AuditURL        string `env:"AUDIT_URL"`
 }
 
+// HTTPServerConfig — адрес и таймауты http.Server.
 type HTTPServerConfig struct {
 	Address      string `env:"ADDRESS"`
 	ReadTimeout  time.Duration
@@ -27,6 +32,7 @@ type HTTPServerConfig struct {
 	IdleTimeout  time.Duration
 }
 
+// Load читает флаги, затем перекрывает их переменными окружения.
 func Load() *ServerConfig {
 	var httpSrv = HTTPServerConfig{Address: "localhost:8080", ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	var dbCfg = database.DefaultConfig()
@@ -38,6 +44,8 @@ func Load() *ServerConfig {
 	flag.BoolVar(&cfg.Restore, "r", false, "restore")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN (PostgreSQL)")
 	flag.StringVar(&cfg.Key, "k", "", "key for request signing (HMAC-SHA256)")
+	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file")
+	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events")
 	flag.IntVar(&cfg.Database.MaxOpenConns, "db-max-open-conns", dbCfg.MaxOpenConns, "database max open connections")
 	flag.IntVar(&cfg.Database.MaxIdleConns, "db-max-idle-conns", dbCfg.MaxIdleConns, "database max idle connections")
 	flag.DurationVar(&cfg.Database.ConnMaxIdleTime, "db-conn-max-idle-time", dbCfg.ConnMaxIdleTime, "database connection max idle time")

@@ -1,3 +1,4 @@
+// Package config загружает конфигурацию агента из флагов и окружения.
 package config
 
 import (
@@ -7,6 +8,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/config/common"
 )
 
+// AgentConfig — флаги и переменные окружения процесса агента.
 type AgentConfig struct {
 	Env            string
 	Address        string `env:"ADDRESS"`
@@ -16,6 +18,7 @@ type AgentConfig struct {
 	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
+// Load читает флаги, затем перекрывает их переменными окружения.
 func Load() *AgentConfig {
 	var cfg = AgentConfig{Env: common.EnvLocal, Address: "localhost:8080", ReportInterval: 10, PollInterval: 2, RateLimit: 1}
 

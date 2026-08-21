@@ -10,12 +10,14 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/storage"
 )
 
+// SyncSaveRepo оборачивает MemStorage и сразу сбрасывает снимок на диск.
 type SyncSaveRepo struct {
 	repo *storage.MemStorage
 	cfg  *config.ServerConfig
 	log  *slog.Logger
 }
 
+// NewSyncSaveRepo включает синхронную персистенцию при StoreInterval == 0.
 func NewSyncSaveRepo(repo *storage.MemStorage, cfg *config.ServerConfig, log *slog.Logger) *SyncSaveRepo {
 	return &SyncSaveRepo{repo: repo, cfg: cfg, log: log}
 }

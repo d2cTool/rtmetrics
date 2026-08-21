@@ -1,18 +1,25 @@
+// Package update реализует POST /update — запись одной метрики в JSON.
 package update
 
 import (
-	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/d2cTool/rtmetrics/internal/audit"
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// New возвращает хендлер POST /update и POST /update/: JSON одной метрики.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
+	return NewWithAudit(log, svc, nil)
+}
+
+// NewWithAudit как New, после успешного сохранения уведомляет auditor.
+func NewWithAudit(log *slog.Logger, svc service.MetricsService, auditor *audit.Subject) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.update.new"
 		log = log.With(
@@ -85,22 +92,19 @@ func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 			resp = &metrics.Metrics{ID: req.ID, MType: metrics.Gauge, Value: &newValue}
 		}
 
-		log.Info("data saved",
+		log.Debug("data saved",
 			slog.String("mtype", req.MType),
 			slog.String("name", req.ID),
 		)
+		auditor.NotifyRequest(r, []string{req.ID})
 
-		var buf bytes.Buffer
-		if err := json.NewEncoder(&buf).Encode(resp); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			log.Error("cannot encode response JSON body",
 				slog.String("error", err.Error()),
 			)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write(buf.Bytes())
 	}
 }

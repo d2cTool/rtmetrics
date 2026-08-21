@@ -1,3 +1,4 @@
+// Package postgres хранит метрики в PostgreSQL и накатывает embed-миграции.
 package postgres
 
 import (
@@ -22,10 +23,12 @@ var _ repository.MetricsRepository = (*Storage)(nil)
 //go:embed migrations/*.sql
 var embedMigrations embed.FS
 
+// Storage — PostgreSQL-реализация repository.MetricsRepository.
 type Storage struct {
 	db *sql.DB
 }
 
+// New применяет миграции и возвращает хранилище над db.
 func New(ctx context.Context, db *sql.DB) (*Storage, error) {
 	if err := migrate(ctx, db); err != nil {
 		return nil, fmt.Errorf("apply migrations: %w", err)

@@ -1,6 +1,8 @@
+// Package get реализует GET /value/{mtype}/{name}.
 package get
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -11,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// New возвращает хендлер GET /value/{mtype}/{name}: тело ответа — значение метрики.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.get.new"
@@ -66,6 +69,6 @@ func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(resp))
+		_, _ = io.WriteString(w, resp)
 	}
 }

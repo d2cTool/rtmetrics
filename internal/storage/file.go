@@ -9,6 +9,7 @@ import (
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 )
 
+// Save атомарно пишет counters и gauges в path (через временный файл).
 func Save(ctx context.Context, path string, counters map[string]int64, gauges map[string]float64) error {
 	if path == "" {
 		return nil
@@ -52,6 +53,7 @@ func Save(ctx context.Context, path string, counters map[string]int64, gauges ma
 	return nil
 }
 
+// Load читает снимок из path. Пустой или отсутствующий файл даёт пустые карты.
 func Load(path string) (counters map[string]int64, gauges map[string]float64, err error) {
 	counters = make(map[string]int64)
 	gauges = make(map[string]float64)

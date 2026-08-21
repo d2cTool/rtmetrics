@@ -9,12 +9,14 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
+// SystemMetrics — память и загрузка CPU по ядрам (gopsutil).
 type SystemMetrics struct {
 	TotalMemory    float64
 	FreeMemory     float64
 	CPUUtilization []float64
 }
 
+// CollectSystem читает TotalMemory, FreeMemory и CPUUtilization.
 func CollectSystem(ctx context.Context) (SystemMetrics, error) {
 	vm, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
@@ -33,6 +35,7 @@ func CollectSystem(ctx context.Context) (SystemMetrics, error) {
 	}, nil
 }
 
+// Gauges превращает системные метрики в слайс model.Metrics для батча.
 func (s SystemMetrics) Gauges() []m.Metrics {
 	metrics := make([]m.Metrics, 0, len(s.CPUUtilization)+2)
 	metrics = append(metrics,

@@ -16,6 +16,7 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
+// Client — HTTP-клиент агента: JSON, gzip для батча, опциональная подпись HashSHA256.
 type Client struct {
 	client *resty.Client
 	logger *slog.Logger
@@ -70,6 +71,7 @@ func (c *Client) post(ctx context.Context, path string, headers map[string]strin
 	})
 }
 
+// SendGauge отправляет одну gauge на POST /update.
 func (c *Client) SendGauge(ctx context.Context, name string, value float64) error {
 	body, err := json.Marshal(m.NewGauge(name, value))
 	if err != nil {
@@ -82,6 +84,7 @@ func (c *Client) SendGauge(ctx context.Context, name string, value float64) erro
 	return nil
 }
 
+// SendCounter отправляет один counter на POST /update.
 func (c *Client) SendCounter(ctx context.Context, name string, value int64) error {
 	body, err := json.Marshal(m.NewCounter(name, value))
 	if err != nil {
@@ -94,6 +97,7 @@ func (c *Client) SendCounter(ctx context.Context, name string, value int64) erro
 	return nil
 }
 
+// SendBatch сжимает метрики gzip и шлёт их на POST /updates/.
 func (c *Client) SendBatch(ctx context.Context, metrics []m.Metrics) error {
 	if len(metrics) == 0 {
 		return nil
@@ -125,6 +129,7 @@ func (c *Client) SendBatch(ctx context.Context, metrics []m.Metrics) error {
 	return nil
 }
 
+// SendGaugeMetrics отправляет каждую gauge отдельным POST /update.
 func (c *Client) SendGaugeMetrics(ctx context.Context, metrics GaugeMetrics) error {
 	for _, metric := range metrics.Gauges() {
 		if err := ctx.Err(); err != nil {
@@ -141,6 +146,7 @@ func (c *Client) SendGaugeMetrics(ctx context.Context, metrics GaugeMetrics) err
 	return nil
 }
 
+// SendCounterMetrics отправляет PollCount на POST /update.
 func (c *Client) SendCounterMetrics(ctx context.Context, metrics CountMetrics) error {
 	err := c.SendCounter(ctx, "PollCount", metrics.PollCount)
 

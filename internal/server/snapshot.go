@@ -1,3 +1,4 @@
+// Package server — восстановление и периодический снимок in-memory хранилища.
 package server
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/storage"
 )
 
+// RestoreIfNeeded загружает снимок из файла, если включён Restore.
 func RestoreIfNeeded(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Logger) {
 	if !cfg.Restore || cfg.FileStoragePath == "" {
 		return
@@ -29,6 +31,7 @@ func RestoreIfNeeded(cfg *config.ServerConfig, st *storage.MemStorage, log *slog
 	)
 }
 
+// SaveSnapshot пишет текущие метрики в FileStoragePath.
 func SaveSnapshot(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Logger) {
 	if cfg.FileStoragePath == "" {
 		return
@@ -43,6 +46,7 @@ func SaveSnapshot(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Lo
 	}
 }
 
+// RunPeriodicSave пишет снимок каждые StoreInterval секунд. Блокирует вызывающего.
 func RunPeriodicSave(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Logger) {
 	if cfg.StoreInterval <= 0 || cfg.FileStoragePath == "" {
 		return

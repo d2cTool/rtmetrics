@@ -1,3 +1,4 @@
+// Package agent собирает runtime/system метрики и отправляет их на сервер.
 package agent
 
 import (
@@ -7,10 +8,12 @@ import (
 	m "github.com/d2cTool/rtmetrics/internal/model"
 )
 
+// CountMetrics — счётчики агента. PollCount растёт с каждым опросом runtime.
 type CountMetrics struct {
 	PollCount int64
 }
 
+// GaugeMetrics — снимок runtime.MemStats и RandomValue для отправки на сервер.
 type GaugeMetrics struct {
 	Alloc         float64
 	BuckHashSys   float64
@@ -42,6 +45,7 @@ type GaugeMetrics struct {
 	RandomValue   float64
 }
 
+// Collect читает runtime.MemStats и возвращает набор gauge для отчёта.
 func Collect() GaugeMetrics {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -78,40 +82,45 @@ func Collect() GaugeMetrics {
 	}
 }
 
+// Gauges собирает runtime-метрики в слайс. Value указывает на поля g:
+// структура сбегает в кучу один раз, а не по аллокации на каждую метрику.
 func (g GaugeMetrics) Gauges() []m.Metrics {
-	return []m.Metrics{
-		*m.NewGauge("Alloc", g.Alloc),
-		*m.NewGauge("BuckHashSys", g.BuckHashSys),
-		*m.NewGauge("Frees", g.Frees),
-		*m.NewGauge("GCCPUFraction", g.GCCPUFraction),
-		*m.NewGauge("GCSys", g.GCSys),
-		*m.NewGauge("HeapAlloc", g.HeapAlloc),
-		*m.NewGauge("HeapIdle", g.HeapIdle),
-		*m.NewGauge("HeapInuse", g.HeapInuse),
-		*m.NewGauge("HeapObjects", g.HeapObjects),
-		*m.NewGauge("HeapReleased", g.HeapReleased),
-		*m.NewGauge("HeapSys", g.HeapSys),
-		*m.NewGauge("LastGC", g.LastGC),
-		*m.NewGauge("Lookups", g.Lookups),
-		*m.NewGauge("MCacheInuse", g.MCacheInuse),
-		*m.NewGauge("MCacheSys", g.MCacheSys),
-		*m.NewGauge("MSpanInuse", g.MSpanInuse),
-		*m.NewGauge("MSpanSys", g.MSpanSys),
-		*m.NewGauge("Mallocs", g.Mallocs),
-		*m.NewGauge("NextGC", g.NextGC),
-		*m.NewGauge("NumForcedGC", g.NumForcedGC),
-		*m.NewGauge("NumGC", g.NumGC),
-		*m.NewGauge("OtherSys", g.OtherSys),
-		*m.NewGauge("PauseTotalNs", g.PauseTotalNs),
-		*m.NewGauge("StackInuse", g.StackInuse),
-		*m.NewGauge("StackSys", g.StackSys),
-		*m.NewGauge("Sys", g.Sys),
-		*m.NewGauge("TotalAlloc", g.TotalAlloc),
-		*m.NewGauge("RandomValue", g.RandomValue),
-	}
+	out := make([]m.Metrics, 0, 29)
+	return append(out,
+		m.Metrics{ID: "Alloc", MType: m.Gauge, Value: &g.Alloc},
+		m.Metrics{ID: "BuckHashSys", MType: m.Gauge, Value: &g.BuckHashSys},
+		m.Metrics{ID: "Frees", MType: m.Gauge, Value: &g.Frees},
+		m.Metrics{ID: "GCCPUFraction", MType: m.Gauge, Value: &g.GCCPUFraction},
+		m.Metrics{ID: "GCSys", MType: m.Gauge, Value: &g.GCSys},
+		m.Metrics{ID: "HeapAlloc", MType: m.Gauge, Value: &g.HeapAlloc},
+		m.Metrics{ID: "HeapIdle", MType: m.Gauge, Value: &g.HeapIdle},
+		m.Metrics{ID: "HeapInuse", MType: m.Gauge, Value: &g.HeapInuse},
+		m.Metrics{ID: "HeapObjects", MType: m.Gauge, Value: &g.HeapObjects},
+		m.Metrics{ID: "HeapReleased", MType: m.Gauge, Value: &g.HeapReleased},
+		m.Metrics{ID: "HeapSys", MType: m.Gauge, Value: &g.HeapSys},
+		m.Metrics{ID: "LastGC", MType: m.Gauge, Value: &g.LastGC},
+		m.Metrics{ID: "Lookups", MType: m.Gauge, Value: &g.Lookups},
+		m.Metrics{ID: "MCacheInuse", MType: m.Gauge, Value: &g.MCacheInuse},
+		m.Metrics{ID: "MCacheSys", MType: m.Gauge, Value: &g.MCacheSys},
+		m.Metrics{ID: "MSpanInuse", MType: m.Gauge, Value: &g.MSpanInuse},
+		m.Metrics{ID: "MSpanSys", MType: m.Gauge, Value: &g.MSpanSys},
+		m.Metrics{ID: "Mallocs", MType: m.Gauge, Value: &g.Mallocs},
+		m.Metrics{ID: "NextGC", MType: m.Gauge, Value: &g.NextGC},
+		m.Metrics{ID: "NumForcedGC", MType: m.Gauge, Value: &g.NumForcedGC},
+		m.Metrics{ID: "NumGC", MType: m.Gauge, Value: &g.NumGC},
+		m.Metrics{ID: "OtherSys", MType: m.Gauge, Value: &g.OtherSys},
+		m.Metrics{ID: "PauseTotalNs", MType: m.Gauge, Value: &g.PauseTotalNs},
+		m.Metrics{ID: "StackInuse", MType: m.Gauge, Value: &g.StackInuse},
+		m.Metrics{ID: "StackSys", MType: m.Gauge, Value: &g.StackSys},
+		m.Metrics{ID: "Sys", MType: m.Gauge, Value: &g.Sys},
+		m.Metrics{ID: "TotalAlloc", MType: m.Gauge, Value: &g.TotalAlloc},
+		m.Metrics{ID: "RandomValue", MType: m.Gauge, Value: &g.RandomValue},
+	)
 }
 
+// BuildBatch склеивает runtime-gauge и PollCount в один слайс для POST /updates/.
 func BuildBatch(gauges GaugeMetrics, counters CountMetrics) []m.Metrics {
 	batch := gauges.Gauges()
-	return append(batch, *m.NewCounter("PollCount", counters.PollCount))
+	delta := counters.PollCount
+	return append(batch, m.Metrics{ID: "PollCount", MType: m.Counter, Delta: &delta})
 }

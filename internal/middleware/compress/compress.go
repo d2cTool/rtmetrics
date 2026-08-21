@@ -1,12 +1,31 @@
+// Package compress — gzip для входящих тел и исходящих HTML/JSON.
 package compress
 
 import (
 	"compress/gzip"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 )
 
+var gzipWriterPool = sync.Pool{
+	New: func() any {
+		w, err := gzip.NewWriterLevel(io.Discard, gzip.DefaultCompression)
+		if err != nil {
+			return gzip.NewWriter(io.Discard)
+		}
+		return w
+	},
+}
+
+var compressibleTypes = map[string]bool{
+	"text/html":        true,
+	"application/json": true,
+}
+
+// New распаковывает gzip-тело запроса и сжимает HTML/JSON-ответы, если клиент их принимает.
 func New(log *slog.Logger) func(next http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
@@ -14,6 +33,11 @@ func New(log *slog.Logger) func(next http.Handler) http.Handler {
 		log.Info("compress middleware enabled")
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/debug/pprof") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
 				gz, err := gzip.NewReader(r.Body)
 				if err != nil {
@@ -40,13 +64,7 @@ func New(log *slog.Logger) func(next http.Handler) http.Handler {
 				return
 			}
 
-			gzw := &gzipResponseWriter{
-				ResponseWriter: w,
-				whitelist: map[string]bool{
-					"text/html":        true,
-					"application/json": true,
-				},
-			}
+			gzw := &gzipResponseWriter{ResponseWriter: w}
 			defer gzw.Close()
 
 			next.ServeHTTP(gzw, r)
@@ -56,9 +74,8 @@ func New(log *slog.Logger) func(next http.Handler) http.Handler {
 
 type gzipResponseWriter struct {
 	http.ResponseWriter
-	writer    *gzip.Writer
-	whitelist map[string]bool
-	written   bool
+	writer  *gzip.Writer
+	written bool
 }
 
 func (g *gzipResponseWriter) WriteHeader(statusCode int) {
@@ -67,7 +84,7 @@ func (g *gzipResponseWriter) WriteHeader(statusCode int) {
 		contentType = contentType[:idx]
 	}
 	contentType = strings.TrimSpace(contentType)
-	shouldCompress := g.whitelist[contentType]
+	shouldCompress := compressibleTypes[contentType]
 
 	if shouldCompress {
 		g.Header().Set("Content-Encoding", "gzip")
@@ -89,11 +106,9 @@ func (g *gzipResponseWriter) Write(data []byte) (int, error) {
 
 	if g.Header().Get("Content-Encoding") == "gzip" {
 		if g.writer == nil {
-			var err error
-			g.writer, err = gzip.NewWriterLevel(g.ResponseWriter, gzip.DefaultCompression)
-			if err != nil {
-				return g.ResponseWriter.Write(data)
-			}
+			w := gzipWriterPool.Get().(*gzip.Writer)
+			w.Reset(g.ResponseWriter)
+			g.writer = w
 		}
 		return g.writer.Write(data)
 	}
@@ -103,6 +118,8 @@ func (g *gzipResponseWriter) Write(data []byte) (int, error) {
 
 func (g *gzipResponseWriter) Close() {
 	if g.writer != nil {
-		g.writer.Close()
+		_ = g.writer.Close()
+		gzipWriterPool.Put(g.writer)
+		g.writer = nil
 	}
 }

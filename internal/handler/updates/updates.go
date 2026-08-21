@@ -1,3 +1,4 @@
+// Package updates реализует POST /updates/ — пакетная запись метрик.
 package updates
 
 import (
@@ -6,18 +7,27 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/d2cTool/rtmetrics/internal/audit"
 	metrics "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// New возвращает хендлер POST /updates и POST /updates/: JSON-массив метрик.
 func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
+	return NewWithAudit(log, svc, nil)
+}
+
+// NewWithAudit как New, после успешного сохранения уведомляет auditor.
+func NewWithAudit(log *slog.Logger, svc service.MetricsService, auditor *audit.Subject) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handler.updates.new"
-		log = log.With(
-			slog.String("op", op),
-			slog.String("request_id", middleware.GetReqID(r.Context())),
-		)
+		if log.Enabled(r.Context(), slog.LevelDebug) {
+			log = log.With(
+				slog.String("op", op),
+				slog.String("request_id", middleware.GetReqID(r.Context())),
+			)
+		}
 
 		if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
 			log.Error("unsupported content type", slog.String("content_type", r.Header.Get("Content-Type")))
@@ -64,7 +74,14 @@ func New(log *slog.Logger, svc service.MetricsService) http.HandlerFunc {
 			return
 		}
 
-		log.Info("metrics batch saved", slog.Int("count", len(batch)))
+		log.Debug("metrics batch saved", slog.Int("count", len(batch)))
+		if auditor != nil {
+			names := make([]string, 0, len(batch))
+			for _, m := range batch {
+				names = append(names, m.ID)
+			}
+			auditor.NotifyRequest(r, names)
+		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 	}

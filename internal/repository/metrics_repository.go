@@ -1,3 +1,4 @@
+// Package repository задаёт контракт хранилища метрик.
 package repository
 
 import (
@@ -6,6 +7,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/model"
 )
 
+// MetricsRepository сохраняет и читает counter/gauge. Реализации — память и PostgreSQL.
 type MetricsRepository interface {
 	SaveCounter(ctx context.Context, name string, value int64) (int64, error)
 	SaveGauge(ctx context.Context, name string, value float64) (float64, error)
