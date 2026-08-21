@@ -2,6 +2,7 @@
 package common
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 )
@@ -29,4 +30,18 @@ func SetupLogger(env string) *slog.Logger {
 	}
 
 	return log
+}
+
+// PrintBuildInfo пишет в stdout данные сборки. Пустые значения заменяются на N/A.
+func PrintBuildInfo(version, date, commit string) {
+	fmt.Printf("Build version: %s\n", orNA(version))
+	fmt.Printf("Build date: %s\n", orNA(date))
+	fmt.Printf("Build commit: %s\n", orNA(commit))
+}
+
+func orNA(v string) string {
+	if v == "" {
+		return "N/A"
+	}
+	return v
 }

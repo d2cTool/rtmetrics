@@ -13,7 +13,15 @@ import (
 	common "github.com/d2cTool/rtmetrics/internal/config/common"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	common.PrintBuildInfo(buildVersion, buildDate, buildCommit)
+
 	if err := run(); err != nil {
 		slog.Error("agent failed", slog.String("error", err.Error()))
 	}

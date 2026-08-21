@@ -34,7 +34,15 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/server"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	common.PrintBuildInfo(buildVersion, buildDate, buildCommit)
+
 	cfg := config.Load()
 
 	log := common.SetupLogger(cfg.Env)
