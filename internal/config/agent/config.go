@@ -16,6 +16,7 @@ type AgentConfig struct {
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	Key            string `env:"KEY"`
 	RateLimit      int    `env:"RATE_LIMIT"`
+	CryptoKey      string `env:"CRYPTO_KEY"`
 }
 
 // Load читает флаги, затем перекрывает их переменными окружения.
@@ -27,6 +28,7 @@ func Load() *AgentConfig {
 	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval")
 	flag.StringVar(&cfg.Key, "k", "", "key for request signing (HMAC-SHA256)")
 	flag.IntVar(&cfg.RateLimit, "l", 1, "max number of simultaneous outgoing requests")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to PEM file with RSA public key")
 	flag.Parse()
 
 	err := env.Parse(&cfg)

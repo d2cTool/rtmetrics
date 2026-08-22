@@ -20,6 +20,7 @@ type ServerConfig struct {
 	Restore         bool   `env:"RESTORE"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	Key             string `env:"KEY"`
+	CryptoKey       string `env:"CRYPTO_KEY"`
 	AuditFile       string `env:"AUDIT_FILE"`
 	AuditURL        string `env:"AUDIT_URL"`
 }
@@ -44,6 +45,7 @@ func Load() *ServerConfig {
 	flag.BoolVar(&cfg.Restore, "r", false, "restore")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN (PostgreSQL)")
 	flag.StringVar(&cfg.Key, "k", "", "key for request signing (HMAC-SHA256)")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to PEM file with RSA private key")
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events")
 	flag.IntVar(&cfg.Database.MaxOpenConns, "db-max-open-conns", dbCfg.MaxOpenConns, "database max open connections")

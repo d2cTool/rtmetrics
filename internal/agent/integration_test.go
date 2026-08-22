@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +17,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/handler/updates"
 	"github.com/d2cTool/rtmetrics/internal/hash"
 	compressmw "github.com/d2cTool/rtmetrics/internal/middleware/compress"
+	decryptmw "github.com/d2cTool/rtmetrics/internal/middleware/decrypt"
 	signmw "github.com/d2cTool/rtmetrics/internal/middleware/sign"
 	"github.com/d2cTool/rtmetrics/internal/service"
 	"github.com/d2cTool/rtmetrics/internal/storage"
@@ -120,6 +123,41 @@ func TestAgentServerSignedBatchIntegration(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, hash.Sign(body, key), resp.Header.Get(hash.Header))
+}
+
+func TestAgentServerEncryptedBatchIntegration(t *testing.T) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	log := slog.Default()
+	st := storage.New()
+	svc := service.New(st)
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(decryptmw.New(log, priv))
+	r.Use(compressmw.New(log))
+	r.Post("/updates/", updates.New(log, svc))
+	r.Post("/update", update.New(log, svc))
+	r.Get("/value/{mtype}/{name}", get.New(log, svc))
+
+	server := httptest.NewServer(r)
+	defer server.Close()
+
+	client := NewClient(server.URL, "", log).WithPublicKey(&priv.PublicKey)
+
+	batch := BuildBatch(GaugeMetrics{Alloc: 100.5, RandomValue: 0.5}, CountMetrics{PollCount: 4})
+	require.NoError(t, client.SendBatch(t.Context(), batch))
+	assertMetric(t, server.URL, "gauge", "Alloc", "100.5")
+	assertMetric(t, server.URL, "counter", "PollCount", "4")
+
+	require.NoError(t, client.SendGauge(t.Context(), "HeapSys", 42))
+	assertMetric(t, server.URL, "gauge", "HeapSys", "42")
+
+	// Без заголовка шифрования сервер по-прежнему принимает открытый JSON.
+	plain := NewClient(server.URL, "", log)
+	require.NoError(t, plain.SendGauge(t.Context(), "Sys", 7))
+	assertMetric(t, server.URL, "gauge", "Sys", "7")
 }
 
 func TestClientDoesNotSendOnCancelledContext(t *testing.T) {

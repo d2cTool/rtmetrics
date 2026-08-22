@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"database/sql"
 	"log/slog"
 	"net/http"
@@ -29,8 +30,10 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/handler/html"
 	"github.com/d2cTool/rtmetrics/internal/handler/post"
 	"github.com/d2cTool/rtmetrics/internal/middleware/compress"
+	"github.com/d2cTool/rtmetrics/internal/middleware/decrypt"
 	"github.com/d2cTool/rtmetrics/internal/middleware/logger"
 	"github.com/d2cTool/rtmetrics/internal/middleware/sign"
+	"github.com/d2cTool/rtmetrics/internal/rsaenc"
 	"github.com/d2cTool/rtmetrics/internal/server"
 )
 
@@ -58,6 +61,7 @@ func main() {
 		slog.Duration("db_conn_max_idle_time", cfg.Database.ConnMaxIdleTime),
 		slog.Duration("db_conn_max_lifetime", cfg.Database.ConnMaxLifetime),
 		slog.Bool("signing_enabled", cfg.Key != ""),
+		slog.String("crypto_key", cfg.CryptoKey),
 		slog.String("audit_file", cfg.AuditFile),
 		slog.String("audit_url", cfg.AuditURL),
 	)
@@ -119,7 +123,18 @@ func main() {
 	auditor := newAuditor(log, cfg.AuditFile, cfg.AuditURL)
 	defer auditor.Close()
 
-	router := createRouter(log, svc, pinger, cfg.Key, auditor)
+	var priv *rsa.PrivateKey
+	if cfg.CryptoKey != "" {
+		var err error
+		priv, err = rsaenc.LoadPrivateKey(cfg.CryptoKey)
+		if err != nil {
+			log.Error("failed to load private key", slog.String("error", err.Error()))
+			return
+		}
+		log.Info("request decryption enabled")
+	}
+
+	router := createRouter(log, svc, pinger, cfg.Key, priv, auditor)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -185,10 +200,13 @@ func newAuditor(log *slog.Logger, file, url string) *audit.Subject {
 	return subject
 }
 
-func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string, auditor *audit.Subject) *chi.Mux {
+func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string, priv *rsa.PrivateKey, auditor *audit.Subject) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
+	if priv != nil {
+		router.Use(decrypt.New(log, priv))
+	}
 	router.Use(compress.New(log))
 	if key != "" {
 		router.Use(sign.New(log, key))
