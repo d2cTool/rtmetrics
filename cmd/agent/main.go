@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
-	"os"
 	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/d2cTool/rtmetrics/internal/agent"
@@ -62,7 +60,7 @@ func run() error {
 		return err
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), common.ShutdownSignals()...)
 	defer stop()
 
 	runner.Run(ctx)

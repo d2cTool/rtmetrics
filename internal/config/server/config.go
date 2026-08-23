@@ -1,8 +1,9 @@
-// Package config загружает конфигурацию HTTP-сервера из флагов и окружения.
+// Package config загружает конфигурацию HTTP-сервера из файла, флагов и окружения.
 package config
 
 import (
 	"flag"
+	"os"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -10,7 +11,7 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/database"
 )
 
-// ServerConfig — флаги и переменные окружения процесса сервера.
+// ServerConfig — флаги, переменные окружения и JSON-файл процесса сервера.
 type ServerConfig struct {
 	Env             string
 	HTTPServer      *HTTPServerConfig
@@ -33,32 +34,141 @@ type HTTPServerConfig struct {
 	IdleTimeout  time.Duration
 }
 
-// Load читает флаги, затем перекрывает их переменными окружения.
+// Load читает JSON-файл (если задан), затем флаги, затем перекрывает их окружением.
 func Load() *ServerConfig {
-	var httpSrv = HTTPServerConfig{Address: "localhost:8080", ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
-	var dbCfg = database.DefaultConfig()
-	var cfg = ServerConfig{Env: common.EnvLocal, HTTPServer: &httpSrv, Database: dbCfg, StoreInterval: 300, FileStoragePath: "./tmp/data", Restore: false}
-
-	flag.StringVar(&cfg.HTTPServer.Address, "a", "localhost:8080", "server address")
-	flag.IntVar(&cfg.StoreInterval, "i", 300, "store interval")
-	flag.StringVar(&cfg.FileStoragePath, "f", "./tmp/data", "file storage path")
-	flag.BoolVar(&cfg.Restore, "r", false, "restore")
-	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN (PostgreSQL)")
-	flag.StringVar(&cfg.Key, "k", "", "key for request signing (HMAC-SHA256)")
-	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to PEM file with RSA private key")
-	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file")
-	flag.StringVar(&cfg.AuditURL, "audit-url", "", "URL to POST audit events")
-	flag.IntVar(&cfg.Database.MaxOpenConns, "db-max-open-conns", dbCfg.MaxOpenConns, "database max open connections")
-	flag.IntVar(&cfg.Database.MaxIdleConns, "db-max-idle-conns", dbCfg.MaxIdleConns, "database max idle connections")
-	flag.DurationVar(&cfg.Database.ConnMaxIdleTime, "db-conn-max-idle-time", dbCfg.ConnMaxIdleTime, "database connection max idle time")
-	flag.DurationVar(&cfg.Database.ConnMaxLifetime, "db-conn-max-lifetime", dbCfg.ConnMaxLifetime, "database connection max lifetime")
-	flag.DurationVar(&cfg.Database.PingTimeout, "db-ping-timeout", dbCfg.PingTimeout, "database ping timeout on startup")
-	flag.Parse()
-
-	err := env.Parse(&cfg)
+	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	cfg, err := parse(fs, os.Args[1:])
 	if err != nil {
 		panic(err)
 	}
+	return cfg
+}
 
-	return &cfg
+// Parse собирает ServerConfig из args и окружения.
+// Приоритет: дефолты < JSON-файл < флаги < переменные окружения.
+func Parse(args []string) (*ServerConfig, error) {
+	fs := flag.NewFlagSet("server", flag.ContinueOnError)
+	return parse(fs, args)
+}
+
+func defaults() *ServerConfig {
+	httpSrv := HTTPServerConfig{Address: "localhost:8080", ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	return &ServerConfig{
+		Env:             common.EnvLocal,
+		HTTPServer:      &httpSrv,
+		Database:        database.DefaultConfig(),
+		StoreInterval:   300,
+		FileStoragePath: "./tmp/data",
+		Restore:         false,
+	}
+}
+
+func parse(fs *flag.FlagSet, args []string) (*ServerConfig, error) {
+	cfg := defaults()
+
+	var (
+		address         = cfg.HTTPServer.Address
+		storeInterval   = cfg.StoreInterval
+		fileStoragePath = cfg.FileStoragePath
+		restore         = cfg.Restore
+		databaseDSN     = cfg.DatabaseDSN
+		key             = cfg.Key
+		cryptoKey       = cfg.CryptoKey
+		auditFile       = cfg.AuditFile
+		auditURL        = cfg.AuditURL
+		maxOpenConns    = cfg.Database.MaxOpenConns
+		maxIdleConns    = cfg.Database.MaxIdleConns
+		connMaxIdleTime = cfg.Database.ConnMaxIdleTime
+		connMaxLifetime = cfg.Database.ConnMaxLifetime
+		pingTimeout     = cfg.Database.PingTimeout
+		configPath      string
+	)
+
+	fs.StringVar(&address, "a", address, "server address")
+	fs.IntVar(&storeInterval, "i", storeInterval, "store interval")
+	fs.StringVar(&fileStoragePath, "f", fileStoragePath, "file storage path")
+	fs.BoolVar(&restore, "r", restore, "restore")
+	fs.StringVar(&databaseDSN, "d", databaseDSN, "database DSN (PostgreSQL)")
+	fs.StringVar(&key, "k", key, "key for request signing (HMAC-SHA256)")
+	fs.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to PEM file with RSA private key")
+	fs.StringVar(&auditFile, "audit-file", auditFile, "path to audit log file")
+	fs.StringVar(&auditURL, "audit-url", auditURL, "URL to POST audit events")
+	fs.IntVar(&maxOpenConns, "db-max-open-conns", maxOpenConns, "database max open connections")
+	fs.IntVar(&maxIdleConns, "db-max-idle-conns", maxIdleConns, "database max idle connections")
+	fs.DurationVar(&connMaxIdleTime, "db-conn-max-idle-time", connMaxIdleTime, "database connection max idle time")
+	fs.DurationVar(&connMaxLifetime, "db-conn-max-lifetime", connMaxLifetime, "database connection max lifetime")
+	fs.DurationVar(&pingTimeout, "db-ping-timeout", pingTimeout, "database ping timeout on startup")
+	fs.StringVar(&configPath, "c", "", "path to JSON config file")
+	fs.StringVar(&configPath, "config", "", "path to JSON config file")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+
+	if path := common.ResolveConfigPath(configPath); path != "" {
+		if err := applyFile(cfg, path); err != nil {
+			return nil, err
+		}
+	}
+
+	visited := common.VisitedFlags(fs)
+	if common.FlagPassed(visited, "a") {
+		cfg.HTTPServer.Address = address
+	}
+	if common.FlagPassed(visited, "i") {
+		cfg.StoreInterval = storeInterval
+	}
+	if common.FlagPassed(visited, "f") {
+		cfg.FileStoragePath = fileStoragePath
+	}
+	if common.FlagPassed(visited, "r") {
+		cfg.Restore = restore
+	}
+	if common.FlagPassed(visited, "d") {
+		cfg.DatabaseDSN = databaseDSN
+	}
+	if common.FlagPassed(visited, "k") {
+		cfg.Key = key
+	}
+	if common.FlagPassed(visited, "crypto-key") {
+		cfg.CryptoKey = cryptoKey
+	}
+	if common.FlagPassed(visited, "audit-file") {
+		cfg.AuditFile = auditFile
+	}
+	if common.FlagPassed(visited, "audit-url") {
+		cfg.AuditURL = auditURL
+	}
+	if common.FlagPassed(visited, "db-max-open-conns") {
+		cfg.Database.MaxOpenConns = maxOpenConns
+	}
+	if common.FlagPassed(visited, "db-max-idle-conns") {
+		cfg.Database.MaxIdleConns = maxIdleConns
+	}
+	if common.FlagPassed(visited, "db-conn-max-idle-time") {
+		cfg.Database.ConnMaxIdleTime = connMaxIdleTime
+	}
+	if common.FlagPassed(visited, "db-conn-max-lifetime") {
+		cfg.Database.ConnMaxLifetime = connMaxLifetime
+	}
+	if common.FlagPassed(visited, "db-ping-timeout") {
+		cfg.Database.PingTimeout = pingTimeout
+	}
+
+	if err := env.Parse(cfg); err != nil {
+		return nil, err
+	}
+	applyStoreFileEnv(cfg)
+
+	return cfg, nil
+}
+
+// applyStoreFileEnv принимает STORE_FILE, если FILE_STORAGE_PATH не задан.
+func applyStoreFileEnv(cfg *ServerConfig) {
+	if _, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
+		return
+	}
+	if v, ok := os.LookupEnv("STORE_FILE"); ok {
+		cfg.FileStoragePath = v
+	}
 }

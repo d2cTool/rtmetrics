@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
+	"sync"
 	"time"
 
 	"github.com/d2cTool/rtmetrics/internal/audit"
@@ -95,6 +95,10 @@ func main() {
 		}
 	}
 
+	saveCtx, stopSave := context.WithCancel(context.Background())
+	defer stopSave()
+	var saveWG sync.WaitGroup
+
 	if repo == nil {
 		memSt = storage.New()
 		server.RestoreIfNeeded(cfg, memSt, log)
@@ -104,7 +108,11 @@ func main() {
 			repo = server.NewSyncSaveRepo(memSt, cfg, log)
 			log.Info("using in-memory storage with synchronous file persistence")
 		case cfg.FileStoragePath != "":
-			go server.RunPeriodicSave(cfg, memSt, log)
+			saveWG.Add(1)
+			go func() {
+				defer saveWG.Done()
+				server.RunPeriodicSave(saveCtx, cfg, memSt, log)
+			}()
 			repo = memSt
 			log.Info("using in-memory storage with periodic file persistence")
 		default:
@@ -148,16 +156,20 @@ func main() {
 	go func() { serverExited <- srv.ListenAndServe() }()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigChan, common.ShutdownSignals()...)
 
 	select {
 	case err := <-serverExited:
 		if err != nil && err != http.ErrServerClosed {
 			log.Error("failed to start server", slog.String("error", err.Error()))
 		}
-	case <-sigChan:
-		log.Info("shutdown signal received")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	case sig := <-sigChan:
+		log.Info("shutdown signal received", slog.String("signal", sig.String()))
+		timeout := cfg.HTTPServer.WriteTimeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		if err := srv.Shutdown(ctx); err != nil {
 			log.Error("server shutdown error", slog.String("error", err.Error()))
 		}
@@ -165,6 +177,8 @@ func main() {
 		<-serverExited
 	}
 
+	stopSave()
+	saveWG.Wait()
 	if memSt != nil {
 		server.SaveSnapshot(cfg, memSt, log)
 	}

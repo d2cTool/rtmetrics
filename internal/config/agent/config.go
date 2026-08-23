@@ -1,14 +1,15 @@
-// Package config загружает конфигурацию агента из флагов и окружения.
+// Package config загружает конфигурацию агента из файла, флагов и окружения.
 package config
 
 import (
 	"flag"
+	"os"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/d2cTool/rtmetrics/internal/config/common"
 )
 
-// AgentConfig — флаги и переменные окружения процесса агента.
+// AgentConfig — флаги, переменные окружения и JSON-файл процесса агента.
 type AgentConfig struct {
 	Env            string
 	Address        string `env:"ADDRESS"`
@@ -19,22 +20,82 @@ type AgentConfig struct {
 	CryptoKey      string `env:"CRYPTO_KEY"`
 }
 
-// Load читает флаги, затем перекрывает их переменными окружения.
+// Load читает JSON-файл (если задан), затем флаги, затем перекрывает их окружением.
 func Load() *AgentConfig {
-	var cfg = AgentConfig{Env: common.EnvLocal, Address: "localhost:8080", ReportInterval: 10, PollInterval: 2, RateLimit: 1}
-
-	flag.StringVar(&cfg.Address, "a", "localhost:8080", "server address")
-	flag.IntVar(&cfg.ReportInterval, "r", 10, "report interval")
-	flag.IntVar(&cfg.PollInterval, "p", 2, "poll interval")
-	flag.StringVar(&cfg.Key, "k", "", "key for request signing (HMAC-SHA256)")
-	flag.IntVar(&cfg.RateLimit, "l", 1, "max number of simultaneous outgoing requests")
-	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to PEM file with RSA public key")
-	flag.Parse()
-
-	err := env.Parse(&cfg)
+	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	cfg, err := parse(fs, os.Args[1:])
 	if err != nil {
 		panic(err)
 	}
+	return cfg
+}
 
-	return &cfg
+// Parse собирает AgentConfig из args и окружения.
+// Приоритет: дефолты < JSON-файл < флаги < переменные окружения.
+func Parse(args []string) (*AgentConfig, error) {
+	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
+	return parse(fs, args)
+}
+
+func defaults() *AgentConfig {
+	return &AgentConfig{Env: common.EnvLocal, Address: "localhost:8080", ReportInterval: 10, PollInterval: 2, RateLimit: 1}
+}
+
+func parse(fs *flag.FlagSet, args []string) (*AgentConfig, error) {
+	cfg := defaults()
+
+	var (
+		address        = cfg.Address
+		reportInterval = cfg.ReportInterval
+		pollInterval   = cfg.PollInterval
+		key            = cfg.Key
+		rateLimit      = cfg.RateLimit
+		cryptoKey      = cfg.CryptoKey
+		configPath     string
+	)
+
+	fs.StringVar(&address, "a", address, "server address")
+	fs.IntVar(&reportInterval, "r", reportInterval, "report interval")
+	fs.IntVar(&pollInterval, "p", pollInterval, "poll interval")
+	fs.StringVar(&key, "k", key, "key for request signing (HMAC-SHA256)")
+	fs.IntVar(&rateLimit, "l", rateLimit, "max number of simultaneous outgoing requests")
+	fs.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to PEM file with RSA public key")
+	fs.StringVar(&configPath, "c", "", "path to JSON config file")
+	fs.StringVar(&configPath, "config", "", "path to JSON config file")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+
+	if path := common.ResolveConfigPath(configPath); path != "" {
+		if err := applyFile(cfg, path); err != nil {
+			return nil, err
+		}
+	}
+
+	visited := common.VisitedFlags(fs)
+	if common.FlagPassed(visited, "a") {
+		cfg.Address = address
+	}
+	if common.FlagPassed(visited, "r") {
+		cfg.ReportInterval = reportInterval
+	}
+	if common.FlagPassed(visited, "p") {
+		cfg.PollInterval = pollInterval
+	}
+	if common.FlagPassed(visited, "k") {
+		cfg.Key = key
+	}
+	if common.FlagPassed(visited, "l") {
+		cfg.RateLimit = rateLimit
+	}
+	if common.FlagPassed(visited, "crypto-key") {
+		cfg.CryptoKey = cryptoKey
+	}
+
+	if err := env.Parse(cfg); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }

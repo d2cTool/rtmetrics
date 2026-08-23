@@ -101,6 +101,42 @@ func TestRunnerCollectsAndReportsInSeparateGoroutines(t *testing.T) {
 
 	runner.mu.Lock()
 	defer runner.mu.Unlock()
-	assert.Positive(t, runner.counters.PollCount, "runtime-метрики должны опрашиваться")
+	assert.Positive(t, runner.gauges.Alloc, "runtime-метрики должны опрашиваться")
 	assert.Positive(t, runner.system.TotalMemory, "системные метрики должны опрашиваться")
+}
+
+func TestRunnerFlushesMetricsOnShutdown(t *testing.T) {
+	var requests atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	runner, err := NewRunner(NewClient(server.URL, "", slog.Default()), slog.Default(), 10*time.Millisecond, time.Hour, 1)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runner.Run(ctx)
+	}()
+
+	require.Eventually(t, func() bool {
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		return runner.counters.PollCount > 0
+	}, time.Second, 10*time.Millisecond)
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "runner не завершился после отмены контекста")
+	}
+
+	assert.Positive(t, requests.Load(), "накопленные метрики должны уйти при остановке")
 }
