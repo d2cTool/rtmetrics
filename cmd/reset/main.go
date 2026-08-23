@@ -17,8 +17,13 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "reset: %v\n", err)
+		exitErr(err)
 	}
+}
+
+func exitErr(err error) {
+	fmt.Fprintf(os.Stderr, "reset: %v\n", err)
+	os.Exit(1)
 }
 
 func run() error {

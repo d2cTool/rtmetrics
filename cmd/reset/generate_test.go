@@ -54,6 +54,30 @@ type Plain struct {
 	assert.Nil(t, got)
 }
 
+func TestGenerateFieldKinds(t *testing.T) {
+	got, err := generateFromSource("kinds.go", `package p
+
+// generate:reset
+type Kinds struct {
+	arr [2]int
+	ch  chan int
+	fn  func()
+	it  interface{}
+	emb embedded
+}
+
+type embedded struct{}
+`)
+	require.NoError(t, err)
+	src := string(got)
+	assert.Contains(t, src, "for i := range k.arr")
+	assert.Contains(t, src, "k.arr[i] = 0")
+	assert.Contains(t, src, "k.ch = nil")
+	assert.Contains(t, src, "k.fn = nil")
+	assert.Contains(t, src, "k.it.(interface{ Reset() })")
+	assert.Contains(t, src, "any(&k.emb)")
+}
+
 func TestGenerateGenericStruct(t *testing.T) {
 	got, err := generateFromSource("generic.go", `package p
 

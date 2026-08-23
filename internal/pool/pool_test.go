@@ -25,6 +25,28 @@ func TestNewReturnsPool(t *testing.T) {
 	require.NotNil(t, p)
 }
 
+func TestGetNilConstructorReturnsZero(t *testing.T) {
+	t.Parallel()
+
+	var p *Pool[*item]
+	require.NotPanics(t, func() {
+		p = New[*item](nil)
+	})
+	require.NotNil(t, p)
+
+	var got *item
+	require.NotPanics(t, func() {
+		got = p.Get()
+	})
+
+	var zero *item
+	assert.Equal(t, zero, got)
+
+	require.NotPanics(t, func() {
+		assert.Equal(t, zero, p.Get())
+	})
+}
+
 func TestGetCreatesViaConstructor(t *testing.T) {
 	t.Parallel()
 
