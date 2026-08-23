@@ -13,7 +13,21 @@ import (
 	common "github.com/d2cTool/rtmetrics/internal/config/common"
 )
 
+var (
+	buildVersion string = "N/A"
+	buildDate    string = "N/A"
+	buildCommit  string = "N/A"
+)
+
 func main() {
+	common.PrintBuildInfo(buildVersion, buildDate, buildCommit)
+
+	if err := run(); err != nil {
+		slog.Error("agent failed", slog.String("error", err.Error()))
+	}
+}
+
+func run() error {
 	cfg := config.Load()
 
 	log := common.SetupLogger(cfg.Env)
@@ -35,8 +49,7 @@ func main() {
 		cfg.RateLimit,
 	)
 	if err != nil {
-		log.Error("invalid configuration", slog.String("error", err.Error()))
-		os.Exit(1)
+		return err
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -45,4 +58,5 @@ func main() {
 	runner.Run(ctx)
 
 	log.Info("agent stopped")
+	return nil
 }
