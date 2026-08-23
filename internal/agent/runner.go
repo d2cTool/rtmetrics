@@ -24,7 +24,7 @@ type Runner struct {
 }
 
 // NewRunner проверяет интервалы и rateLimit (>= 1) и собирает Runner.
-func NewRunner(client *Client, logger *slog.Logger, pollInterval, reportInterval time.Duration, rateLimit int) (*Runner, error) {
+func NewRunner(client BatchSender, logger *slog.Logger, pollInterval, reportInterval time.Duration, rateLimit int) (*Runner, error) {
 	if pollInterval <= 0 {
 		return nil, fmt.Errorf("poll interval must be > 0, got %s", pollInterval)
 	}

@@ -24,6 +24,8 @@ type ServerConfig struct {
 	CryptoKey       string `env:"CRYPTO_KEY"`
 	AuditFile       string `env:"AUDIT_FILE"`
 	AuditURL        string `env:"AUDIT_URL"`
+	TrustedSubnet   string `env:"TRUSTED_SUBNET"`
+	GRPCAddress     string `env:"GRPC_ADDRESS"`
 }
 
 // HTTPServerConfig — адрес и таймауты http.Server.
@@ -76,6 +78,8 @@ func parse(fs *flag.FlagSet, args []string) (*ServerConfig, error) {
 		cryptoKey       = cfg.CryptoKey
 		auditFile       = cfg.AuditFile
 		auditURL        = cfg.AuditURL
+		trustedSubnet   = cfg.TrustedSubnet
+		grpcAddress     = cfg.GRPCAddress
 		maxOpenConns    = cfg.Database.MaxOpenConns
 		maxIdleConns    = cfg.Database.MaxIdleConns
 		connMaxIdleTime = cfg.Database.ConnMaxIdleTime
@@ -93,6 +97,8 @@ func parse(fs *flag.FlagSet, args []string) (*ServerConfig, error) {
 	fs.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to PEM file with RSA private key")
 	fs.StringVar(&auditFile, "audit-file", auditFile, "path to audit log file")
 	fs.StringVar(&auditURL, "audit-url", auditURL, "URL to POST audit events")
+	fs.StringVar(&trustedSubnet, "t", trustedSubnet, "trusted subnet in CIDR notation")
+	fs.StringVar(&grpcAddress, "g", grpcAddress, "gRPC server address")
 	fs.IntVar(&maxOpenConns, "db-max-open-conns", maxOpenConns, "database max open connections")
 	fs.IntVar(&maxIdleConns, "db-max-idle-conns", maxIdleConns, "database max idle connections")
 	fs.DurationVar(&connMaxIdleTime, "db-conn-max-idle-time", connMaxIdleTime, "database connection max idle time")
@@ -138,6 +144,12 @@ func parse(fs *flag.FlagSet, args []string) (*ServerConfig, error) {
 	}
 	if common.FlagPassed(visited, "audit-url") {
 		cfg.AuditURL = auditURL
+	}
+	if common.FlagPassed(visited, "t") {
+		cfg.TrustedSubnet = trustedSubnet
+	}
+	if common.FlagPassed(visited, "g") {
+		cfg.GRPCAddress = grpcAddress
 	}
 	if common.FlagPassed(visited, "db-max-open-conns") {
 		cfg.Database.MaxOpenConns = maxOpenConns

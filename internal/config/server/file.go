@@ -17,6 +17,8 @@ type fileConfig struct {
 	Key           *string `json:"key"`
 	AuditFile     *string `json:"audit_file"`
 	AuditURL      *string `json:"audit_url"`
+	TrustedSubnet *string `json:"trusted_subnet"`
+	GRPCAddress   *string `json:"grpc_address"`
 
 	DatabaseMaxOpenConns    *int    `json:"database_max_open_conns"`
 	DatabaseMaxIdleConns    *int    `json:"database_max_idle_conns"`
@@ -64,6 +66,12 @@ func overlayFile(cfg *ServerConfig, file *fileConfig) error {
 	}
 	if file.AuditURL != nil {
 		cfg.AuditURL = *file.AuditURL
+	}
+	if file.TrustedSubnet != nil {
+		cfg.TrustedSubnet = *file.TrustedSubnet
+	}
+	if file.GRPCAddress != nil {
+		cfg.GRPCAddress = *file.GRPCAddress
 	}
 	if file.DatabaseMaxOpenConns != nil {
 		cfg.Database.MaxOpenConns = *file.DatabaseMaxOpenConns

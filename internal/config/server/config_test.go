@@ -14,7 +14,7 @@ func clearServerEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
 		"CONFIG", "ADDRESS", "STORE_INTERVAL", "FILE_STORAGE_PATH", "STORE_FILE",
-		"RESTORE", "DATABASE_DSN", "KEY", "CRYPTO_KEY", "AUDIT_FILE", "AUDIT_URL",
+		"RESTORE", "DATABASE_DSN", "KEY", "CRYPTO_KEY", "AUDIT_FILE", "AUDIT_URL", "TRUSTED_SUBNET", "GRPC_ADDRESS",
 		"DATABASE_MAX_OPEN_CONNS", "DATABASE_MAX_IDLE_CONNS",
 		"DATABASE_CONN_MAX_IDLE_TIME", "DATABASE_CONN_MAX_LIFETIME", "DATABASE_PING_TIMEOUT",
 	} {
@@ -42,6 +42,8 @@ func TestParse_Defaults(t *testing.T) {
 	assert.Empty(t, cfg.DatabaseDSN)
 	assert.Empty(t, cfg.CryptoKey)
 	assert.Empty(t, cfg.Key)
+	assert.Empty(t, cfg.TrustedSubnet)
+	assert.Empty(t, cfg.GRPCAddress)
 	assert.Equal(t, 10, cfg.Database.MaxOpenConns)
 }
 
@@ -57,6 +59,8 @@ func TestParse_JSONFile(t *testing.T) {
 		"key": "secret",
 		"audit_file": "/tmp/audit.log",
 		"audit_url": "http://audit.local",
+		"trusted_subnet": "192.168.0.0/24",
+		"grpc_address": "localhost:3200",
 		"database_max_open_conns": 7,
 		"database_conn_max_idle_time": "2m"
 	}`)
@@ -72,6 +76,8 @@ func TestParse_JSONFile(t *testing.T) {
 	assert.Equal(t, "secret", cfg.Key)
 	assert.Equal(t, "/tmp/audit.log", cfg.AuditFile)
 	assert.Equal(t, "http://audit.local", cfg.AuditURL)
+	assert.Equal(t, "192.168.0.0/24", cfg.TrustedSubnet)
+	assert.Equal(t, "localhost:3200", cfg.GRPCAddress)
 	assert.Equal(t, 7, cfg.Database.MaxOpenConns)
 	assert.Equal(t, 2*time.Minute, cfg.Database.ConnMaxIdleTime)
 }
@@ -178,6 +184,34 @@ func TestParse_MissingConfigFile(t *testing.T) {
 	clearServerEnv(t)
 	_, err := Parse([]string{"-c", filepath.Join(t.TempDir(), "missing.json")})
 	require.Error(t, err)
+}
+
+func TestParse_GRPCAddressFlagAndEnv(t *testing.T) {
+	clearServerEnv(t)
+	path := writeServerJSON(t, `{"grpc_address":"file:3200"}`)
+
+	cfg, err := Parse([]string{"-c", path, "-g", "flag:3300"})
+	require.NoError(t, err)
+	assert.Equal(t, "flag:3300", cfg.GRPCAddress)
+
+	t.Setenv("GRPC_ADDRESS", "env:3400")
+	cfg, err = Parse([]string{"-c", path, "-g", "flag:3300"})
+	require.NoError(t, err)
+	assert.Equal(t, "env:3400", cfg.GRPCAddress)
+}
+
+func TestParse_TrustedSubnetFlagAndEnv(t *testing.T) {
+	clearServerEnv(t)
+	path := writeServerJSON(t, `{"trusted_subnet":"10.0.0.0/8"}`)
+
+	cfg, err := Parse([]string{"-c", path, "-t", "172.16.0.0/12"})
+	require.NoError(t, err)
+	assert.Equal(t, "172.16.0.0/12", cfg.TrustedSubnet)
+
+	t.Setenv("TRUSTED_SUBNET", "192.168.1.0/24")
+	cfg, err = Parse([]string{"-c", path, "-t", "172.16.0.0/12"})
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.1.0/24", cfg.TrustedSubnet)
 }
 
 func TestParse_InvalidStoreInterval(t *testing.T) {

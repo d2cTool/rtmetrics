@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"database/sql"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,6 +27,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/d2cTool/rtmetrics/internal/grpcmetrics"
 	"github.com/d2cTool/rtmetrics/internal/handler/get"
 	"github.com/d2cTool/rtmetrics/internal/handler/html"
 	"github.com/d2cTool/rtmetrics/internal/handler/post"
@@ -33,8 +35,12 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/middleware/decrypt"
 	"github.com/d2cTool/rtmetrics/internal/middleware/logger"
 	"github.com/d2cTool/rtmetrics/internal/middleware/sign"
+	"github.com/d2cTool/rtmetrics/internal/middleware/subnet"
+	"github.com/d2cTool/rtmetrics/internal/proto"
+	"github.com/d2cTool/rtmetrics/internal/realip"
 	"github.com/d2cTool/rtmetrics/internal/rsaenc"
 	"github.com/d2cTool/rtmetrics/internal/server"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -64,7 +70,15 @@ func main() {
 		slog.String("crypto_key", cfg.CryptoKey),
 		slog.String("audit_file", cfg.AuditFile),
 		slog.String("audit_url", cfg.AuditURL),
+		slog.String("trusted_subnet", cfg.TrustedSubnet),
+		slog.String("grpc_address", cfg.GRPCAddress),
 	)
+
+	trusted, err := realip.ParseCIDR(cfg.TrustedSubnet)
+	if err != nil {
+		log.Error("invalid trusted subnet", slog.String("error", err.Error()))
+		return
+	}
 
 	var db *sql.DB
 	if cfg.DatabaseDSN != "" {
@@ -142,7 +156,24 @@ func main() {
 		log.Info("request decryption enabled")
 	}
 
-	router := createRouter(log, svc, pinger, cfg.Key, priv, auditor)
+	router := createRouter(log, svc, pinger, cfg.Key, priv, auditor, trusted)
+
+	var grpcSrv *grpc.Server
+	if cfg.GRPCAddress != "" {
+		lis, err := net.Listen("tcp", cfg.GRPCAddress)
+		if err != nil {
+			log.Error("failed to listen grpc", slog.String("address", cfg.GRPCAddress), slog.String("error", err.Error()))
+			return
+		}
+		grpcSrv = grpc.NewServer(grpc.ChainUnaryInterceptor(subnet.UnaryInterceptor(log, trusted)))
+		proto.RegisterMetricsServer(grpcSrv, grpcmetrics.New(svc, log, auditor))
+		go func() {
+			log.Info("starting grpc server", slog.String("address", cfg.GRPCAddress))
+			if err := grpcSrv.Serve(lis); err != nil {
+				log.Error("grpc server stopped", slog.String("error", err.Error()))
+			}
+		}()
+	}
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -175,6 +206,19 @@ func main() {
 		}
 		cancel()
 		<-serverExited
+	}
+
+	if grpcSrv != nil {
+		stopped := make(chan struct{})
+		go func() {
+			grpcSrv.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-time.After(10 * time.Second):
+			grpcSrv.Stop()
+		}
 	}
 
 	stopSave()
@@ -214,7 +258,7 @@ func newAuditor(log *slog.Logger, file, url string) *audit.Subject {
 	return subject
 }
 
-func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string, priv *rsa.PrivateKey, auditor *audit.Subject) *chi.Mux {
+func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string, priv *rsa.PrivateKey, auditor *audit.Subject, trusted *net.IPNet) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
@@ -230,15 +274,19 @@ func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Ping
 
 	router.Get("/ping", ping.New(log, pinger))
 
-	router.Post("/update", update.NewWithAudit(log, svc, auditor))
-	router.Post("/update/", update.NewWithAudit(log, svc, auditor))
-	router.Post("/updates", updates.NewWithAudit(log, svc, auditor))
-	router.Post("/updates/", updates.NewWithAudit(log, svc, auditor))
+	router.Group(func(r chi.Router) {
+		if trusted != nil {
+			r.Use(subnet.New(log, trusted))
+		}
+		r.Post("/update", update.NewWithAudit(log, svc, auditor))
+		r.Post("/update/", update.NewWithAudit(log, svc, auditor))
+		r.Post("/updates", updates.NewWithAudit(log, svc, auditor))
+		r.Post("/updates/", updates.NewWithAudit(log, svc, auditor))
+		r.Post("/update/{mtype}/{name}/{value}", post.NewWithAudit(log, svc, auditor))
+		r.Post("/{mtype}/{name}/{value}", post.NewWithAudit(log, svc, auditor))
+	})
 	router.Post("/value", value.New(log, svc))
 	router.Post("/value/", value.New(log, svc))
-
-	router.Post("/update/{mtype}/{name}/{value}", post.NewWithAudit(log, svc, auditor))
-	router.Post("/{mtype}/{name}/{value}", post.NewWithAudit(log, svc, auditor))
 	router.Post("/*", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 
 	router.Get("/value/{mtype}/{name}", get.New(log, svc))

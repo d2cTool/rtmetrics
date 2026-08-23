@@ -10,6 +10,7 @@ type fileConfig struct {
 	CryptoKey      *string `json:"crypto_key"`
 	Key            *string `json:"key"`
 	RateLimit      *int    `json:"rate_limit"`
+	GRPCAddress    *string `json:"grpc_address"`
 }
 
 func applyFile(cfg *AgentConfig, path string) error {
@@ -46,6 +47,9 @@ func overlayFile(cfg *AgentConfig, file *fileConfig) error {
 	}
 	if file.RateLimit != nil {
 		cfg.RateLimit = *file.RateLimit
+	}
+	if file.GRPCAddress != nil {
+		cfg.GRPCAddress = *file.GRPCAddress
 	}
 	return nil
 }
