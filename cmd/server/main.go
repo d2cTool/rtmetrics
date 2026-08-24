@@ -91,7 +91,7 @@ func run() error {
 	trusted, err := realip.ParseCIDR(cfg.TrustedSubnet)
 	if err != nil {
 		log.Error("invalid trusted subnet", slog.String("error", err.Error()))
-		return
+		return err
 	}
 
 	var db *sql.DB
@@ -176,7 +176,7 @@ func run() error {
 		lis, err := net.Listen("tcp", cfg.GRPCAddress)
 		if err != nil {
 			log.Error("failed to listen grpc", slog.String("address", cfg.GRPCAddress), slog.String("error", err.Error()))
-			return
+			return err
 		}
 		grpcSrv = grpc.NewServer(grpc.ChainUnaryInterceptor(subnet.UnaryInterceptor(log, trusted)))
 		proto.RegisterMetricsServer(grpcSrv, grpcmetrics.New(svc, log, auditor))
