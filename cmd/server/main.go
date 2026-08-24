@@ -46,7 +46,21 @@ var (
 func main() {
 	common.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 
-	cfg := config.Load()
+	if err := run(); err != nil {
+		slog.Error("server failed", slog.String("error", err.Error()))
+		exit(1)
+	}
+}
+
+func exit(code int) {
+	os.Exit(code)
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
 	log := common.SetupLogger(cfg.Env)
 	log.Info("starting server",
@@ -136,8 +150,7 @@ func main() {
 		var err error
 		priv, err = rsaenc.LoadPrivateKey(cfg.CryptoKey)
 		if err != nil {
-			log.Error("failed to load private key", slog.String("error", err.Error()))
-			return
+			return err
 		}
 		log.Info("request decryption enabled")
 	}
@@ -152,25 +165,26 @@ func main() {
 		Handler:      router,
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), common.ShutdownSignals()...)
+	defer stop()
+
 	serverExited := make(chan error, 1)
 	go func() { serverExited <- srv.ListenAndServe() }()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, common.ShutdownSignals()...)
 
 	select {
 	case err := <-serverExited:
 		if err != nil && err != http.ErrServerClosed {
 			log.Error("failed to start server", slog.String("error", err.Error()))
 		}
-	case sig := <-sigChan:
-		log.Info("shutdown signal received", slog.String("signal", sig.String()))
+	case <-ctx.Done():
+		stop()
+		log.Info("shutdown signal received")
 		timeout := cfg.HTTPServer.WriteTimeout
 		if timeout <= 0 {
 			timeout = 10 * time.Second
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		if err := srv.Shutdown(ctx); err != nil {
+		shutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		if err := srv.Shutdown(shutCtx); err != nil {
 			log.Error("server shutdown error", slog.String("error", err.Error()))
 		}
 		cancel()
@@ -183,6 +197,7 @@ func main() {
 		server.SaveSnapshot(cfg, memSt, log)
 	}
 	log.Info("server stopped")
+	return nil
 }
 
 func newAuditor(log *slog.Logger, file, url string) *audit.Subject {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"os"
 	"os/signal"
 	"time"
 
@@ -23,11 +24,19 @@ func main() {
 
 	if err := run(); err != nil {
 		slog.Error("agent failed", slog.String("error", err.Error()))
+		exit(1)
 	}
 }
 
+func exit(code int) {
+	os.Exit(code)
+}
+
 func run() error {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
 	log := common.SetupLogger(cfg.Env)
 	log.Info("starting agent",

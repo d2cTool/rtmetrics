@@ -23,6 +23,47 @@ git fetch template && git checkout template/v2 .github
 
 Затем добавьте полученные изменения в свой репозиторий.
 
+## Конфигурация
+
+Примеры JSON без секретов лежат в `configs/server.example.json` и `configs/agent.example.json`. Скопируйте их в рабочие файлы и заполните DSN, ключи и токены локально:
+
+```
+cp configs/server.example.json configs/server.json
+cp configs/agent.example.json configs/agent.json
+```
+
+```
+./server -c configs/server.json
+./agent -c configs/agent.json
+```
+
+Реальные `config.json`, `server.json`, `agent.json`, `configs/server.json` и `configs/agent.json` в git не попадают — см. `.gitignore`.
+
+## Генерация RSA-ключей
+
+Асимметричное шифрование тел запросов (`-crypto-key` / `CRYPTO_KEY`): серверу нужен приватный ключ, агенту — публичный.
+
+```
+make gen-keys
+```
+
+Эквивалент без Make:
+
+```
+mkdir -p keys
+openssl genrsa -out keys/private.pem 4096
+openssl rsa -in keys/private.pem -pubout -out keys/public.pem
+```
+
+Дальше:
+
+```
+./server -crypto-key keys/private.pem
+./agent -crypto-key keys/public.pem
+```
+
+Каталог `keys/*.pem` игнорируется git. Не коммитьте приватный ключ.
+
 ## Запуск автотестов
 
 Для успешного запуска автотестов называйте ветки `iter<number>`, где `<number>` — порядковый номер инкремента. Например, в ветке с названием `iter4` запустятся автотесты для инкрементов с первого по четвёртый.

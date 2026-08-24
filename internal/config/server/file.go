@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"time"
 
 	"github.com/d2cTool/rtmetrics/internal/config/common"
@@ -34,63 +35,20 @@ func applyFile(cfg *ServerConfig, path string) error {
 }
 
 func overlayFile(cfg *ServerConfig, file *fileConfig) error {
-	if file.Address != nil {
-		cfg.HTTPServer.Address = *file.Address
-	}
-	if file.Restore != nil {
-		cfg.Restore = *file.Restore
-	}
-	if file.StoreInterval != nil {
-		sec, err := common.ParseIntervalSeconds(*file.StoreInterval)
-		if err != nil {
-			return err
-		}
-		cfg.StoreInterval = sec
-	}
-	if file.StoreFile != nil {
-		cfg.FileStoragePath = *file.StoreFile
-	}
-	if file.DatabaseDSN != nil {
-		cfg.DatabaseDSN = *file.DatabaseDSN
-	}
-	if file.CryptoKey != nil {
-		cfg.CryptoKey = *file.CryptoKey
-	}
-	if file.Key != nil {
-		cfg.Key = *file.Key
-	}
-	if file.AuditFile != nil {
-		cfg.AuditFile = *file.AuditFile
-	}
-	if file.AuditURL != nil {
-		cfg.AuditURL = *file.AuditURL
-	}
-	if file.DatabaseMaxOpenConns != nil {
-		cfg.Database.MaxOpenConns = *file.DatabaseMaxOpenConns
-	}
-	if file.DatabaseMaxIdleConns != nil {
-		cfg.Database.MaxIdleConns = *file.DatabaseMaxIdleConns
-	}
-	if file.DatabaseConnMaxIdleTime != nil {
-		d, err := time.ParseDuration(*file.DatabaseConnMaxIdleTime)
-		if err != nil {
-			return err
-		}
-		cfg.Database.ConnMaxIdleTime = d
-	}
-	if file.DatabaseConnMaxLifetime != nil {
-		d, err := time.ParseDuration(*file.DatabaseConnMaxLifetime)
-		if err != nil {
-			return err
-		}
-		cfg.Database.ConnMaxLifetime = d
-	}
-	if file.DatabasePingTimeout != nil {
-		d, err := time.ParseDuration(*file.DatabasePingTimeout)
-		if err != nil {
-			return err
-		}
-		cfg.Database.PingTimeout = d
-	}
-	return nil
+	common.Assign(&cfg.HTTPServer.Address, file.Address)
+	common.Assign(&cfg.Restore, file.Restore)
+	common.Assign(&cfg.FileStoragePath, file.StoreFile)
+	common.Assign(&cfg.DatabaseDSN, file.DatabaseDSN)
+	common.Assign(&cfg.CryptoKey, file.CryptoKey)
+	common.Assign(&cfg.Key, file.Key)
+	common.Assign(&cfg.AuditFile, file.AuditFile)
+	common.Assign(&cfg.AuditURL, file.AuditURL)
+	common.Assign(&cfg.Database.MaxOpenConns, file.DatabaseMaxOpenConns)
+	common.Assign(&cfg.Database.MaxIdleConns, file.DatabaseMaxIdleConns)
+	return errors.Join(
+		common.AssignFunc(&cfg.StoreInterval, file.StoreInterval, common.ParseIntervalSeconds),
+		common.AssignFunc(&cfg.Database.ConnMaxIdleTime, file.DatabaseConnMaxIdleTime, time.ParseDuration),
+		common.AssignFunc(&cfg.Database.ConnMaxLifetime, file.DatabaseConnMaxLifetime, time.ParseDuration),
+		common.AssignFunc(&cfg.Database.PingTimeout, file.DatabasePingTimeout, time.ParseDuration),
+	)
 }

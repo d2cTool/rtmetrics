@@ -21,13 +21,8 @@ type AgentConfig struct {
 }
 
 // Load читает JSON-файл (если задан), затем флаги, затем перекрывает их окружением.
-func Load() *AgentConfig {
-	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-	cfg, err := parse(fs, os.Args[1:])
-	if err != nil {
-		panic(err)
-	}
-	return cfg
+func Load() (*AgentConfig, error) {
+	return Parse(os.Args[1:])
 }
 
 // Parse собирает AgentConfig из args и окружения.
@@ -44,22 +39,14 @@ func defaults() *AgentConfig {
 func parse(fs *flag.FlagSet, args []string) (*AgentConfig, error) {
 	cfg := defaults()
 
-	var (
-		address        = cfg.Address
-		reportInterval = cfg.ReportInterval
-		pollInterval   = cfg.PollInterval
-		key            = cfg.Key
-		rateLimit      = cfg.RateLimit
-		cryptoKey      = cfg.CryptoKey
-		configPath     string
-	)
-
-	fs.StringVar(&address, "a", address, "server address")
-	fs.IntVar(&reportInterval, "r", reportInterval, "report interval")
-	fs.IntVar(&pollInterval, "p", pollInterval, "poll interval")
-	fs.StringVar(&key, "k", key, "key for request signing (HMAC-SHA256)")
-	fs.IntVar(&rateLimit, "l", rateLimit, "max number of simultaneous outgoing requests")
-	fs.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to PEM file with RSA public key")
+	var configPath string
+	flags := common.NewBindings()
+	flags.String(fs, "a", cfg.Address, "server address", &cfg.Address)
+	flags.Int(fs, "r", cfg.ReportInterval, "report interval", &cfg.ReportInterval)
+	flags.Int(fs, "p", cfg.PollInterval, "poll interval", &cfg.PollInterval)
+	flags.String(fs, "k", cfg.Key, "key for request signing (HMAC-SHA256)", &cfg.Key)
+	flags.Int(fs, "l", cfg.RateLimit, "max number of simultaneous outgoing requests", &cfg.RateLimit)
+	flags.String(fs, "crypto-key", cfg.CryptoKey, "path to PEM file with RSA public key", &cfg.CryptoKey)
 	fs.StringVar(&configPath, "c", "", "path to JSON config file")
 	fs.StringVar(&configPath, "config", "", "path to JSON config file")
 
@@ -73,25 +60,7 @@ func parse(fs *flag.FlagSet, args []string) (*AgentConfig, error) {
 		}
 	}
 
-	visited := common.VisitedFlags(fs)
-	if common.FlagPassed(visited, "a") {
-		cfg.Address = address
-	}
-	if common.FlagPassed(visited, "r") {
-		cfg.ReportInterval = reportInterval
-	}
-	if common.FlagPassed(visited, "p") {
-		cfg.PollInterval = pollInterval
-	}
-	if common.FlagPassed(visited, "k") {
-		cfg.Key = key
-	}
-	if common.FlagPassed(visited, "l") {
-		cfg.RateLimit = rateLimit
-	}
-	if common.FlagPassed(visited, "crypto-key") {
-		cfg.CryptoKey = cryptoKey
-	}
+	flags.Apply(fs)
 
 	if err := env.Parse(cfg); err != nil {
 		return nil, err

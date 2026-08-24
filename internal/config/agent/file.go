@@ -1,6 +1,10 @@
 package config
 
-import "github.com/d2cTool/rtmetrics/internal/config/common"
+import (
+	"errors"
+
+	"github.com/d2cTool/rtmetrics/internal/config/common"
+)
 
 // fileConfig — JSON-файл агента. Указатели отличают «поле задано» от нуля.
 type fileConfig struct {
@@ -21,31 +25,12 @@ func applyFile(cfg *AgentConfig, path string) error {
 }
 
 func overlayFile(cfg *AgentConfig, file *fileConfig) error {
-	if file.Address != nil {
-		cfg.Address = *file.Address
-	}
-	if file.ReportInterval != nil {
-		sec, err := common.ParseIntervalSeconds(*file.ReportInterval)
-		if err != nil {
-			return err
-		}
-		cfg.ReportInterval = sec
-	}
-	if file.PollInterval != nil {
-		sec, err := common.ParseIntervalSeconds(*file.PollInterval)
-		if err != nil {
-			return err
-		}
-		cfg.PollInterval = sec
-	}
-	if file.CryptoKey != nil {
-		cfg.CryptoKey = *file.CryptoKey
-	}
-	if file.Key != nil {
-		cfg.Key = *file.Key
-	}
-	if file.RateLimit != nil {
-		cfg.RateLimit = *file.RateLimit
-	}
-	return nil
+	common.Assign(&cfg.Address, file.Address)
+	common.Assign(&cfg.CryptoKey, file.CryptoKey)
+	common.Assign(&cfg.Key, file.Key)
+	common.Assign(&cfg.RateLimit, file.RateLimit)
+	return errors.Join(
+		common.AssignFunc(&cfg.ReportInterval, file.ReportInterval, common.ParseIntervalSeconds),
+		common.AssignFunc(&cfg.PollInterval, file.PollInterval, common.ParseIntervalSeconds),
+	)
 }

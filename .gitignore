@@ -26,3 +26,15 @@ vendor/
 
 #custom
 tmp/
+
+# Real JSON configs with secrets. Keep *.example.json tracked.
+config.json
+server.json
+agent.json
+configs/server.json
+configs/agent.json
+configs/config.json
+
+# Local RSA key pair (see make gen-keys)
+keys/*.pem
+keys/*.key
