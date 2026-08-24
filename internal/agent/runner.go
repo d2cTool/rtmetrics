@@ -45,9 +45,9 @@ func NewRunner(client *Client, logger *slog.Logger, pollInterval, reportInterval
 	}, nil
 }
 
-// Run блокируется до отмены ctx: опрос, репорт, затем остановка пула.
+// Run блокируется до отмены ctx: опрос, репорт, финальный сброс метрик, остановка пула.
 func (r *Runner) Run(ctx context.Context) {
-	r.pool.Start(ctx)
+	r.pool.Start()
 
 	var wg sync.WaitGroup
 	for _, loop := range []func(context.Context){r.pollRuntime, r.pollSystem, r.report} {
@@ -59,6 +59,7 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 
 	wg.Wait()
+	r.flush()
 	r.pool.Stop()
 }
 
@@ -114,7 +115,7 @@ func (r *Runner) report(ctx context.Context) {
 			r.logger.Info("stopped reporting metrics")
 			return
 		case <-ticker.C:
-			r.submitCurrentMetrics(ctx)
+			r.flush()
 		}
 	}
 }
@@ -142,24 +143,55 @@ func (r *Runner) updateSystemMetrics(ctx context.Context) {
 	r.system = system
 }
 
+func (r *Runner) flush() {
+	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+	defer cancel()
+	r.submitCurrentMetrics(ctx)
+}
+
 func (r *Runner) submitCurrentMetrics(ctx context.Context) {
-	batch := r.snapshot()
+	batch, polls := r.takeBatch()
 	if len(batch) == 0 {
 		return
 	}
 
 	for _, chunk := range chunkBatch(batch, r.pool.Workers()) {
 		if !r.pool.Submit(ctx, chunk) {
+			r.addPollCount(polls)
 			return
 		}
 	}
 }
 
 func (r *Runner) snapshot() []m.Metrics {
+	batch, _ := r.copyBatch()
+	return batch
+}
+
+func (r *Runner) takeBatch() ([]m.Metrics, int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return append(BuildBatch(r.gauges, r.counters), r.system.Gauges()...)
+	batch := append(BuildBatch(r.gauges, r.counters), r.system.Gauges()...)
+	polls := r.counters.PollCount
+	r.counters.PollCount = 0
+	return batch, polls
+}
+
+func (r *Runner) copyBatch() ([]m.Metrics, int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append(BuildBatch(r.gauges, r.counters), r.system.Gauges()...), r.counters.PollCount
+}
+
+func (r *Runner) addPollCount(n int64) {
+	if n == 0 {
+		return
+	}
+	r.mu.Lock()
+	r.counters.PollCount += n
+	r.mu.Unlock()
 }
 
 func chunkBatch(batch []m.Metrics, parts int) [][]m.Metrics {

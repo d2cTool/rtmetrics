@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	m "github.com/d2cTool/rtmetrics/internal/model"
 )
+
+// sendTimeout даёт воркеру время дослать батч при остановке, включая ретраи 1s+3s+5s.
+const sendTimeout = 15 * time.Second
 
 // WorkerPool ограничивает число одновременных исходящих запросов агента.
 type WorkerPool struct {
@@ -38,11 +42,11 @@ func (p *WorkerPool) Workers() int {
 	return p.workers
 }
 
-// Start запускает воркеры. Останавливаются по ctx или Stop.
-func (p *WorkerPool) Start(ctx context.Context) {
+// Start запускает воркеры. Они живут до Stop, чтобы дослать уже принятые задания.
+func (p *WorkerPool) Start() {
 	p.wg.Add(p.workers)
 	for i := range p.workers {
-		go p.work(ctx, i+1)
+		go p.work(i + 1)
 	}
 
 	p.logger.Info("worker pool started", slog.Int("workers", p.workers))
@@ -77,29 +81,23 @@ func (p *WorkerPool) Stop() {
 	p.logger.Info("worker pool stopped")
 }
 
-func (p *WorkerPool) work(ctx context.Context, id int) {
+func (p *WorkerPool) work(id int) {
 	defer p.wg.Done()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case batch, ok := <-p.jobs:
-			if !ok {
-				return
-			}
-
-			if err := p.client.SendBatch(ctx, batch); err != nil {
-				p.logger.Error("failed to send metrics batch",
-					slog.Int("worker", id),
-					slog.Int("count", len(batch)),
-					slog.String("error", err.Error()))
-				continue
-			}
-
-			p.logger.Debug("metrics batch sent",
+	for batch := range p.jobs {
+		ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+		err := p.client.SendBatch(ctx, batch)
+		cancel()
+		if err != nil {
+			p.logger.Error("failed to send metrics batch",
 				slog.Int("worker", id),
-				slog.Int("count", len(batch)))
+				slog.Int("count", len(batch)),
+				slog.String("error", err.Error()))
+			continue
 		}
+
+		p.logger.Debug("metrics batch sent",
+			slog.Int("worker", id),
+			slog.Int("count", len(batch)))
 	}
 }

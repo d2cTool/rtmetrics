@@ -48,7 +48,7 @@ func TestWorkerPoolLimitsConcurrentRequests(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pool.Start(ctx)
+	pool.Start()
 
 	batch := []m.Metrics{*m.NewGauge("Alloc", 1)}
 	for range jobs {
@@ -76,6 +76,48 @@ func TestWorkerPoolSubmitStopsOnCancelledContext(t *testing.T) {
 
 	assert.False(t, pool.Submit(ctx, []m.Metrics{*m.NewGauge("Alloc", 1)}))
 	assert.True(t, pool.Submit(ctx, nil), "пустое задание не должно ставиться в очередь")
+}
+
+func TestWorkerPoolDrainsQueuedJobsAfterStop(t *testing.T) {
+	started := make(chan struct{})
+	var once sync.Once
+	var total int
+	var mu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(started) })
+		time.Sleep(30 * time.Millisecond)
+		mu.Lock()
+		total++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	pool, err := NewWorkerPool(NewClient(server.URL, "", slog.Default()), slog.Default(), 1)
+	require.NoError(t, err)
+
+	pool.Start()
+	batch := []m.Metrics{*m.NewGauge("Alloc", 1)}
+	require.True(t, pool.Submit(context.Background(), batch))
+	<-started
+	require.True(t, pool.Submit(context.Background(), batch))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pool.Stop()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "пул не дождался отправки очереди")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 2, total, "задания в очереди должны уйти после Stop")
 }
 
 func TestNewWorkerPoolRejectsInvalidWorkers(t *testing.T) {

@@ -5,12 +5,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/d2cTool/rtmetrics/internal/agent"
 	config "github.com/d2cTool/rtmetrics/internal/config/agent"
 	common "github.com/d2cTool/rtmetrics/internal/config/common"
+	"github.com/d2cTool/rtmetrics/internal/rsaenc"
 )
 
 var (
@@ -24,11 +24,19 @@ func main() {
 
 	if err := run(); err != nil {
 		slog.Error("agent failed", slog.String("error", err.Error()))
+		exit(1)
 	}
 }
 
+func exit(code int) {
+	os.Exit(code)
+}
+
 func run() error {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
 	log := common.SetupLogger(cfg.Env)
 	log.Info("starting agent",
@@ -38,9 +46,18 @@ func run() error {
 		slog.Int("report_interval", cfg.ReportInterval),
 		slog.Int("rate_limit", cfg.RateLimit),
 		slog.Bool("signing_enabled", cfg.Key != ""),
+		slog.String("crypto_key", cfg.CryptoKey),
 	)
 
 	client := agent.NewClient("http://"+cfg.Address, cfg.Key, log)
+	if cfg.CryptoKey != "" {
+		pub, err := rsaenc.LoadPublicKey(cfg.CryptoKey)
+		if err != nil {
+			return err
+		}
+		client.WithPublicKey(pub)
+		log.Info("request encryption enabled")
+	}
 	runner, err := agent.NewRunner(
 		client,
 		log,
@@ -52,7 +69,7 @@ func run() error {
 		return err
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), common.ShutdownSignals()...)
 	defer stop()
 
 	runner.Run(ctx)

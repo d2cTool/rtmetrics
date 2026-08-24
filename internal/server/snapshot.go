@@ -46,14 +46,19 @@ func SaveSnapshot(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Lo
 	}
 }
 
-// RunPeriodicSave пишет снимок каждые StoreInterval секунд. Блокирует вызывающего.
-func RunPeriodicSave(cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Logger) {
+// RunPeriodicSave пишет снимок каждые StoreInterval секунд, пока ctx не отменён.
+func RunPeriodicSave(ctx context.Context, cfg *config.ServerConfig, st *storage.MemStorage, log *slog.Logger) {
 	if cfg.StoreInterval <= 0 || cfg.FileStoragePath == "" {
 		return
 	}
 	ticker := time.NewTicker(time.Duration(cfg.StoreInterval) * time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
-		SaveSnapshot(cfg, st, log)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			SaveSnapshot(cfg, st, log)
+		}
 	}
 }

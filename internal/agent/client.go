@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,14 +14,17 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/hash"
 	m "github.com/d2cTool/rtmetrics/internal/model"
 	"github.com/d2cTool/rtmetrics/internal/retry"
+	"github.com/d2cTool/rtmetrics/internal/rsaenc"
 	"github.com/go-resty/resty/v2"
 )
 
-// Client — HTTP-клиент агента: JSON, gzip для батча, опциональная подпись HashSHA256.
+// Client — HTTP-клиент агента: JSON, gzip для батча, опциональная подпись HashSHA256
+// и опциональное RSA-шифрование тела.
 type Client struct {
 	client *resty.Client
 	logger *slog.Logger
 	key    string
+	pub    *rsa.PublicKey
 }
 
 // NewClient создаёт клиента агента. Непустой key включает подпись запросов
@@ -35,6 +39,12 @@ func NewClient(baseURL, key string, logger *slog.Logger) *Client {
 		logger: logger,
 		key:    key,
 	}
+}
+
+// WithPublicKey включает шифрование тел запросов публичным ключом сервера.
+func (c *Client) WithPublicKey(pub *rsa.PublicKey) *Client {
+	c.pub = pub
+	return c
 }
 
 func isRetriableNetworkError(err error) bool {
@@ -60,7 +70,16 @@ func (c *Client) post(ctx context.Context, path string, headers map[string]strin
 		if c.key != "" {
 			req.SetHeader(hash.Header, hash.Sign(signPayload, c.key))
 		}
-		resp, err := req.SetBody(body).Post(path)
+		wire := body
+		if c.pub != nil {
+			enc, err := rsaenc.Encrypt(c.pub, body)
+			if err != nil {
+				return err
+			}
+			wire = enc
+			req.SetHeader(rsaenc.Header, rsaenc.HeaderValue)
+		}
+		resp, err := req.SetBody(wire).Post(path)
 		if err != nil {
 			return err
 		}

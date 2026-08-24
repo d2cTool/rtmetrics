@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
+	"sync"
 	"time"
 
 	"github.com/d2cTool/rtmetrics/internal/audit"
@@ -29,8 +30,10 @@ import (
 	"github.com/d2cTool/rtmetrics/internal/handler/html"
 	"github.com/d2cTool/rtmetrics/internal/handler/post"
 	"github.com/d2cTool/rtmetrics/internal/middleware/compress"
+	"github.com/d2cTool/rtmetrics/internal/middleware/decrypt"
 	"github.com/d2cTool/rtmetrics/internal/middleware/logger"
 	"github.com/d2cTool/rtmetrics/internal/middleware/sign"
+	"github.com/d2cTool/rtmetrics/internal/rsaenc"
 	"github.com/d2cTool/rtmetrics/internal/server"
 )
 
@@ -43,7 +46,21 @@ var (
 func main() {
 	common.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 
-	cfg := config.Load()
+	if err := run(); err != nil {
+		slog.Error("server failed", slog.String("error", err.Error()))
+		exit(1)
+	}
+}
+
+func exit(code int) {
+	os.Exit(code)
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
 	log := common.SetupLogger(cfg.Env)
 	log.Info("starting server",
@@ -58,6 +75,7 @@ func main() {
 		slog.Duration("db_conn_max_idle_time", cfg.Database.ConnMaxIdleTime),
 		slog.Duration("db_conn_max_lifetime", cfg.Database.ConnMaxLifetime),
 		slog.Bool("signing_enabled", cfg.Key != ""),
+		slog.String("crypto_key", cfg.CryptoKey),
 		slog.String("audit_file", cfg.AuditFile),
 		slog.String("audit_url", cfg.AuditURL),
 	)
@@ -91,6 +109,10 @@ func main() {
 		}
 	}
 
+	saveCtx, stopSave := context.WithCancel(context.Background())
+	defer stopSave()
+	var saveWG sync.WaitGroup
+
 	if repo == nil {
 		memSt = storage.New()
 		server.RestoreIfNeeded(cfg, memSt, log)
@@ -100,7 +122,11 @@ func main() {
 			repo = server.NewSyncSaveRepo(memSt, cfg, log)
 			log.Info("using in-memory storage with synchronous file persistence")
 		case cfg.FileStoragePath != "":
-			go server.RunPeriodicSave(cfg, memSt, log)
+			saveWG.Add(1)
+			go func() {
+				defer saveWG.Done()
+				server.RunPeriodicSave(saveCtx, cfg, memSt, log)
+			}()
 			repo = memSt
 			log.Info("using in-memory storage with periodic file persistence")
 		default:
@@ -119,7 +145,17 @@ func main() {
 	auditor := newAuditor(log, cfg.AuditFile, cfg.AuditURL)
 	defer auditor.Close()
 
-	router := createRouter(log, svc, pinger, cfg.Key, auditor)
+	var priv *rsa.PrivateKey
+	if cfg.CryptoKey != "" {
+		var err error
+		priv, err = rsaenc.LoadPrivateKey(cfg.CryptoKey)
+		if err != nil {
+			return err
+		}
+		log.Info("request decryption enabled")
+	}
+
+	router := createRouter(log, svc, pinger, cfg.Key, priv, auditor)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPServer.Address,
@@ -129,31 +165,39 @@ func main() {
 		Handler:      router,
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), common.ShutdownSignals()...)
+	defer stop()
+
 	serverExited := make(chan error, 1)
 	go func() { serverExited <- srv.ListenAndServe() }()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case err := <-serverExited:
 		if err != nil && err != http.ErrServerClosed {
 			log.Error("failed to start server", slog.String("error", err.Error()))
 		}
-	case <-sigChan:
+	case <-ctx.Done():
+		stop()
 		log.Info("shutdown signal received")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := srv.Shutdown(ctx); err != nil {
+		timeout := cfg.HTTPServer.WriteTimeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		shutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		if err := srv.Shutdown(shutCtx); err != nil {
 			log.Error("server shutdown error", slog.String("error", err.Error()))
 		}
 		cancel()
 		<-serverExited
 	}
 
+	stopSave()
+	saveWG.Wait()
 	if memSt != nil {
 		server.SaveSnapshot(cfg, memSt, log)
 	}
 	log.Info("server stopped")
+	return nil
 }
 
 func newAuditor(log *slog.Logger, file, url string) *audit.Subject {
@@ -185,10 +229,13 @@ func newAuditor(log *slog.Logger, file, url string) *audit.Subject {
 	return subject
 }
 
-func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string, auditor *audit.Subject) *chi.Mux {
+func createRouter(log *slog.Logger, svc service.MetricsService, pinger ping.Pinger, key string, priv *rsa.PrivateKey, auditor *audit.Subject) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
+	if priv != nil {
+		router.Use(decrypt.New(log, priv))
+	}
 	router.Use(compress.New(log))
 	if key != "" {
 		router.Use(sign.New(log, key))
