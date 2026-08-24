@@ -1,0 +1,18 @@
+{
+    "address": "localhost:8080",
+    "restore": false,
+    "store_interval": "300s",
+    "store_file": "./tmp/data",
+    "database_dsn": "",
+    "crypto_key": "",
+    "key": "",
+    "audit_file": "",
+    "audit_url": "",
+    "trusted_subnet": "",
+    "grpc_address": "",
+    "database_max_open_conns": 10,
+    "database_max_idle_conns": 5,
+    "database_conn_max_idle_time": "1m",
+    "database_conn_max_lifetime": "30m",
+    "database_ping_timeout": "5s"
+}
