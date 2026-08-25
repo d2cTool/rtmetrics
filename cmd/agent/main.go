@@ -81,11 +81,11 @@ func run() error {
 
 func newSender(cfg *config.AgentConfig, log *slog.Logger) (agent.BatchSender, io.Closer, error) {
 	if cfg.GRPCAddress != "" {
-		client, err := agent.NewGRPCClient(cfg.GRPCAddress, log)
+		client, err := agent.NewGRPCClient(cfg.GRPCAddress, cfg.GRPCCert, log)
 		if err != nil {
 			return nil, nil, err
 		}
-		log.Info("using grpc transport", slog.String("grpc_address", cfg.GRPCAddress))
+		log.Info("using grpc transport", slog.String("grpc_address", cfg.GRPCAddress), slog.String("grpc_cert", cfg.GRPCCert))
 		return client, client, nil
 	}
 

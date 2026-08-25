@@ -35,6 +35,7 @@ configs/server.json
 configs/agent.json
 configs/config.json
 
-# Local RSA key pair (see make gen-keys)
+# Local RSA key pair and gRPC TLS material (see make gen-keys / gen-certs)
 keys/*.pem
 keys/*.key
+keys/*.crt

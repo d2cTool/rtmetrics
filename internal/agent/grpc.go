@@ -6,10 +6,10 @@ import (
 	"log/slog"
 
 	m "github.com/d2cTool/rtmetrics/internal/model"
+	"github.com/d2cTool/rtmetrics/internal/grpctls"
 	"github.com/d2cTool/rtmetrics/internal/proto"
 	"github.com/d2cTool/rtmetrics/internal/realip"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -20,10 +20,15 @@ type GRPCClient struct {
 	logger *slog.Logger
 }
 
-// NewGRPCClient подключается к gRPC-серверу по addr (host:port).
-func NewGRPCClient(addr string, logger *slog.Logger) (*GRPCClient, error) {
+// NewGRPCClient подключается к gRPC-серверу по addr (host:port) по TLS.
+// caFile — PEM сертификата сервера (self-signed или CA); пустой путь шифрует без проверки имени.
+func NewGRPCClient(addr, caFile string, logger *slog.Logger) (*GRPCClient, error) {
+	creds, err := grpctls.ClientCredentials(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("grpc tls: %w", err)
+	}
 	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithUnaryInterceptor(realIPClientInterceptor()),
 	)
 	if err != nil {
@@ -49,7 +54,8 @@ func (c *GRPCClient) SendBatch(ctx context.Context, metrics []m.Metrics) error {
 	if len(metrics) == 0 {
 		return nil
 	}
-	_, err := c.client.UpdateMetrics(ctx, &proto.UpdateMetricsRequest{Metrics: proto.FromModel(metrics)})
+	req := proto.UpdateMetricsRequest_builder{Metrics: proto.FromModel(metrics)}.Build()
+	_, err := c.client.UpdateMetrics(ctx, req)
 	if err != nil {
 		return fmt.Errorf("grpc update metrics: %w", err)
 	}

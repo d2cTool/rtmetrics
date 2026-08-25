@@ -15,6 +15,7 @@ type fileConfig struct {
 	Key            *string `json:"key"`
 	RateLimit      *int    `json:"rate_limit"`
 	GRPCAddress    *string `json:"grpc_address"`
+	GRPCCert       *string `json:"grpc_cert"`
 }
 
 func applyFile(cfg *AgentConfig, path string) error {
@@ -31,6 +32,7 @@ func overlayFile(cfg *AgentConfig, file *fileConfig) error {
 	common.Assign(&cfg.Key, file.Key)
 	common.Assign(&cfg.RateLimit, file.RateLimit)
 	common.Assign(&cfg.GRPCAddress, file.GRPCAddress)
+	common.Assign(&cfg.GRPCCert, file.GRPCCert)
 	return errors.Join(
 		common.AssignFunc(&cfg.ReportInterval, file.ReportInterval, common.ParseIntervalSeconds),
 		common.AssignFunc(&cfg.PollInterval, file.PollInterval, common.ParseIntervalSeconds),

@@ -31,12 +31,12 @@ func New(svc service.MetricsService, log *slog.Logger, auditor *audit.Subject) *
 // UpdateMetrics сохраняет пачку метрик.
 func (s *Server) UpdateMetrics(ctx context.Context, req *proto.UpdateMetricsRequest) (*proto.UpdateMetricsResponse, error) {
 	if req == nil {
-		return &proto.UpdateMetricsResponse{}, nil
+		return new(proto.UpdateMetricsResponse), nil
 	}
 
 	batch := proto.ToModel(req.GetMetrics())
 	if len(batch) == 0 {
-		return &proto.UpdateMetricsResponse{}, nil
+		return new(proto.UpdateMetricsResponse), nil
 	}
 
 	if err := s.svc.UpdateBatch(ctx, batch); err != nil {
@@ -53,7 +53,7 @@ func (s *Server) UpdateMetrics(ctx context.Context, req *proto.UpdateMetricsRequ
 	}
 
 	s.log.Debug("grpc metrics batch saved", slog.Int("count", len(batch)))
-	return &proto.UpdateMetricsResponse{}, nil
+	return new(proto.UpdateMetricsResponse), nil
 }
 
 func metadataIP(ctx context.Context) string {

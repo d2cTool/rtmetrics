@@ -12,7 +12,7 @@ import (
 func clearAgentEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
-		"CONFIG", "ADDRESS", "REPORT_INTERVAL", "POLL_INTERVAL", "KEY", "RATE_LIMIT", "CRYPTO_KEY", "GRPC_ADDRESS",
+		"CONFIG", "ADDRESS", "REPORT_INTERVAL", "POLL_INTERVAL", "KEY", "RATE_LIMIT", "CRYPTO_KEY", "GRPC_ADDRESS", "GRPC_CERT",
 	} {
 		t.Setenv(k, "")
 		require.NoError(t, os.Unsetenv(k))

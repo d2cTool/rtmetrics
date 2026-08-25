@@ -35,9 +35,9 @@ func TestToModelSkipsEmptyAndUnknown(t *testing.T) {
 
 	got := ToModel([]*Metric{
 		nil,
-		{Id: "", Type: Metric_GAUGE, Value: 1},
-		{Id: "x", Type: Metric_MType(99)},
-		{Id: "Alloc", Type: Metric_GAUGE, Value: 2},
+		Metric_builder{Id: "", Type: Metric_GAUGE, Value: 1}.Build(),
+		Metric_builder{Id: "x", Type: Metric_MType(99)}.Build(),
+		Metric_builder{Id: "Alloc", Type: Metric_GAUGE, Value: 2}.Build(),
 	})
 	require.Len(t, got, 1)
 	assert.Equal(t, "Alloc", got[0].ID)

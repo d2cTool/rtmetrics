@@ -64,6 +64,31 @@ openssl rsa -in keys/private.pem -pubout -out keys/public.pem
 
 Каталог `keys/*.pem` игнорируется git. Не коммитьте приватный ключ.
 
+## gRPC TLS
+
+gRPC слушает только TLS. Сертификат можно выпустить так:
+
+```
+make gen-certs
+```
+
+Эквивалент без Make:
+
+```
+mkdir -p keys
+openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
+  -keyout keys/grpc.key -out keys/grpc.crt \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1"
+```
+
+```
+./server -g localhost:3200 -grpc-cert keys/grpc.crt -grpc-key keys/grpc.key
+./agent -g localhost:3200 -grpc-cert keys/grpc.crt
+```
+
+Если файлы не заданы, сервер выпускает эфемерный self-signed сертификат, а агент шифрует канал без проверки имени сервера. Для продакшена задайте `grpc_cert` / `grpc_key`.
+
 ## Запуск автотестов
 
 Для успешного запуска автотестов называйте ветки `iter<number>`, где `<number>` — порядковый номер инкремента. Например, в ветке с названием `iter4` запустятся автотесты для инкрементов с первого по четвёртый.

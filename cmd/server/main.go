@@ -28,6 +28,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/d2cTool/rtmetrics/internal/grpcmetrics"
+	"github.com/d2cTool/rtmetrics/internal/grpctls"
 	"github.com/d2cTool/rtmetrics/internal/handler/get"
 	"github.com/d2cTool/rtmetrics/internal/handler/html"
 	"github.com/d2cTool/rtmetrics/internal/handler/post"
@@ -86,6 +87,7 @@ func run() error {
 		slog.String("audit_url", cfg.AuditURL),
 		slog.String("trusted_subnet", cfg.TrustedSubnet),
 		slog.String("grpc_address", cfg.GRPCAddress),
+		slog.String("grpc_cert", cfg.GRPCCert),
 	)
 
 	trusted, err := realip.ParseCIDR(cfg.TrustedSubnet)
@@ -178,10 +180,17 @@ func run() error {
 			log.Error("failed to listen grpc", slog.String("address", cfg.GRPCAddress), slog.String("error", err.Error()))
 			return err
 		}
-		grpcSrv = grpc.NewServer(grpc.ChainUnaryInterceptor(subnet.UnaryInterceptor(log, trusted)))
+		creds, err := grpctls.ServerCredentials(cfg.GRPCCert, cfg.GRPCKey)
+		if err != nil {
+			return err
+		}
+		grpcSrv = grpc.NewServer(
+			grpc.Creds(creds),
+			grpc.ChainUnaryInterceptor(subnet.UnaryInterceptor(log, trusted)),
+		)
 		proto.RegisterMetricsServer(grpcSrv, grpcmetrics.New(svc, log, auditor))
 		go func() {
-			log.Info("starting grpc server", slog.String("address", cfg.GRPCAddress))
+			log.Info("starting grpc server", slog.String("address", cfg.GRPCAddress), slog.Bool("tls", true))
 			if err := grpcSrv.Serve(lis); err != nil {
 				log.Error("grpc server stopped", slog.String("error", err.Error()))
 			}

@@ -26,6 +26,8 @@ type ServerConfig struct {
 	AuditURL        string `env:"AUDIT_URL"`
 	TrustedSubnet   string `env:"TRUSTED_SUBNET"`
 	GRPCAddress     string `env:"GRPC_ADDRESS"`
+	GRPCCert        string `env:"GRPC_CERT"`
+	GRPCKey         string `env:"GRPC_KEY"`
 }
 
 // HTTPServerConfig — адрес и таймауты http.Server.
@@ -76,6 +78,8 @@ func parse(fs *flag.FlagSet, args []string) (*ServerConfig, error) {
 	flags.String(fs, "audit-url", cfg.AuditURL, "URL to POST audit events", &cfg.AuditURL)
 	flags.String(fs, "t", cfg.TrustedSubnet, "trusted subnet in CIDR notation", &cfg.TrustedSubnet)
 	flags.String(fs, "g", cfg.GRPCAddress, "gRPC server address", &cfg.GRPCAddress)
+	flags.String(fs, "grpc-cert", cfg.GRPCCert, "path to gRPC TLS certificate (PEM)", &cfg.GRPCCert)
+	flags.String(fs, "grpc-key", cfg.GRPCKey, "path to gRPC TLS private key (PEM)", &cfg.GRPCKey)
 	flags.Int(fs, "db-max-open-conns", cfg.Database.MaxOpenConns, "database max open connections", &cfg.Database.MaxOpenConns)
 	flags.Int(fs, "db-max-idle-conns", cfg.Database.MaxIdleConns, "database max idle connections", &cfg.Database.MaxIdleConns)
 	flags.Duration(fs, "db-conn-max-idle-time", cfg.Database.ConnMaxIdleTime, "database connection max idle time", &cfg.Database.ConnMaxIdleTime)

@@ -6,16 +6,16 @@ import "github.com/d2cTool/rtmetrics/internal/model"
 func ToModel(in []*Metric) []model.Metrics {
 	out := make([]model.Metrics, 0, len(in))
 	for _, m := range in {
-		if m == nil || m.Id == "" {
+		if m == nil || m.GetId() == "" {
 			continue
 		}
-		switch m.Type {
+		switch m.GetType() {
 		case Metric_COUNTER:
-			delta := m.Delta
-			out = append(out, model.Metrics{ID: m.Id, MType: model.Counter, Delta: &delta})
+			delta := m.GetDelta()
+			out = append(out, model.Metrics{ID: m.GetId(), MType: model.Counter, Delta: &delta})
 		case Metric_GAUGE:
-			value := m.Value
-			out = append(out, model.Metrics{ID: m.Id, MType: model.Gauge, Value: &value})
+			value := m.GetValue()
+			out = append(out, model.Metrics{ID: m.GetId(), MType: model.Gauge, Value: &value})
 		}
 	}
 	return out
@@ -27,15 +27,19 @@ func FromModel(in []model.Metrics) []*Metric {
 	for _, m := range in {
 		switch m.MType {
 		case model.Counter:
-			item := &Metric{Id: m.ID, Type: Metric_COUNTER}
+			item := new(Metric)
+			item.SetId(m.ID)
+			item.SetType(Metric_COUNTER)
 			if m.Delta != nil {
-				item.Delta = *m.Delta
+				item.SetDelta(*m.Delta)
 			}
 			out = append(out, item)
 		case model.Gauge:
-			item := &Metric{Id: m.ID, Type: Metric_GAUGE}
+			item := new(Metric)
+			item.SetId(m.ID)
+			item.SetType(Metric_GAUGE)
 			if m.Value != nil {
-				item.Value = *m.Value
+				item.SetValue(*m.Value)
 			}
 			out = append(out, item)
 		}

@@ -19,6 +19,7 @@ type AgentConfig struct {
 	RateLimit      int    `env:"RATE_LIMIT"`
 	CryptoKey      string `env:"CRYPTO_KEY"`
 	GRPCAddress    string `env:"GRPC_ADDRESS"`
+	GRPCCert       string `env:"GRPC_CERT"`
 }
 
 // Load читает JSON-файл (если задан), затем флаги, затем перекрывает их окружением.
@@ -49,6 +50,7 @@ func parse(fs *flag.FlagSet, args []string) (*AgentConfig, error) {
 	flags.Int(fs, "l", cfg.RateLimit, "max number of simultaneous outgoing requests", &cfg.RateLimit)
 	flags.String(fs, "crypto-key", cfg.CryptoKey, "path to PEM file with RSA public key", &cfg.CryptoKey)
 	flags.String(fs, "g", cfg.GRPCAddress, "gRPC server address", &cfg.GRPCAddress)
+	flags.String(fs, "grpc-cert", cfg.GRPCCert, "path to gRPC TLS CA/server certificate (PEM)", &cfg.GRPCCert)
 	fs.StringVar(&configPath, "c", "", "path to JSON config file")
 	fs.StringVar(&configPath, "config", "", "path to JSON config file")
 
