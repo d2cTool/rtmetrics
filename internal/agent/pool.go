@@ -15,7 +15,7 @@ const sendTimeout = 15 * time.Second
 
 // WorkerPool ограничивает число одновременных исходящих запросов агента.
 type WorkerPool struct {
-	client  *Client
+	client  BatchSender
 	logger  *slog.Logger
 	workers int
 	jobs    chan []m.Metrics
@@ -24,7 +24,7 @@ type WorkerPool struct {
 }
 
 // NewWorkerPool создаёт пул. workers должен быть >= 1.
-func NewWorkerPool(client *Client, logger *slog.Logger, workers int) (*WorkerPool, error) {
+func NewWorkerPool(client BatchSender, logger *slog.Logger, workers int) (*WorkerPool, error) {
 	if workers < 1 {
 		return nil, fmt.Errorf("rate limit must be >= 1, got %d", workers)
 	}

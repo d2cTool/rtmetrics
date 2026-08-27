@@ -18,6 +18,10 @@ type fileConfig struct {
 	Key           *string `json:"key"`
 	AuditFile     *string `json:"audit_file"`
 	AuditURL      *string `json:"audit_url"`
+	TrustedSubnet *string `json:"trusted_subnet"`
+	GRPCAddress   *string `json:"grpc_address"`
+	GRPCCert      *string `json:"grpc_cert"`
+	GRPCKey       *string `json:"grpc_key"`
 
 	DatabaseMaxOpenConns    *int    `json:"database_max_open_conns"`
 	DatabaseMaxIdleConns    *int    `json:"database_max_idle_conns"`
@@ -43,6 +47,10 @@ func overlayFile(cfg *ServerConfig, file *fileConfig) error {
 	common.Assign(&cfg.Key, file.Key)
 	common.Assign(&cfg.AuditFile, file.AuditFile)
 	common.Assign(&cfg.AuditURL, file.AuditURL)
+	common.Assign(&cfg.TrustedSubnet, file.TrustedSubnet)
+	common.Assign(&cfg.GRPCAddress, file.GRPCAddress)
+	common.Assign(&cfg.GRPCCert, file.GRPCCert)
+	common.Assign(&cfg.GRPCKey, file.GRPCKey)
 	common.Assign(&cfg.Database.MaxOpenConns, file.DatabaseMaxOpenConns)
 	common.Assign(&cfg.Database.MaxIdleConns, file.DatabaseMaxIdleConns)
 	return errors.Join(

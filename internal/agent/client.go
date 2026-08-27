@@ -13,6 +13,7 @@ import (
 
 	"github.com/d2cTool/rtmetrics/internal/hash"
 	m "github.com/d2cTool/rtmetrics/internal/model"
+	"github.com/d2cTool/rtmetrics/internal/realip"
 	"github.com/d2cTool/rtmetrics/internal/retry"
 	"github.com/d2cTool/rtmetrics/internal/rsaenc"
 	"github.com/go-resty/resty/v2"
@@ -32,7 +33,8 @@ type Client struct {
 func NewClient(baseURL, key string, logger *slog.Logger) *Client {
 	client := resty.New().
 		SetBaseURL(baseURL).
-		SetRetryCount(0)
+		SetRetryCount(0).
+		SetHeader(realip.Header, realip.Host())
 
 	return &Client{
 		client: client,

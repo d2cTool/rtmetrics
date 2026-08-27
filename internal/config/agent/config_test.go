@@ -12,7 +12,7 @@ import (
 func clearAgentEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
-		"CONFIG", "ADDRESS", "REPORT_INTERVAL", "POLL_INTERVAL", "KEY", "RATE_LIMIT", "CRYPTO_KEY",
+		"CONFIG", "ADDRESS", "REPORT_INTERVAL", "POLL_INTERVAL", "KEY", "RATE_LIMIT", "CRYPTO_KEY", "GRPC_ADDRESS", "GRPC_CERT",
 	} {
 		t.Setenv(k, "")
 		require.NoError(t, os.Unsetenv(k))
@@ -37,6 +37,7 @@ func TestParse_Defaults(t *testing.T) {
 	assert.Equal(t, 1, cfg.RateLimit)
 	assert.Empty(t, cfg.Key)
 	assert.Empty(t, cfg.CryptoKey)
+	assert.Empty(t, cfg.GRPCAddress)
 }
 
 func TestParse_JSONFile(t *testing.T) {
@@ -47,7 +48,8 @@ func TestParse_JSONFile(t *testing.T) {
 		"poll_interval": "2s",
 		"crypto_key": "/path/to/key.pem",
 		"key": "secret",
-		"rate_limit": 4
+		"rate_limit": 4,
+		"grpc_address": "localhost:3200"
 	}`)
 
 	cfg, err := Parse([]string{"-c", path})
@@ -58,6 +60,7 @@ func TestParse_JSONFile(t *testing.T) {
 	assert.Equal(t, "/path/to/key.pem", cfg.CryptoKey)
 	assert.Equal(t, "secret", cfg.Key)
 	assert.Equal(t, 4, cfg.RateLimit)
+	assert.Equal(t, "localhost:3200", cfg.GRPCAddress)
 }
 
 func TestParse_ConfigLongFlag(t *testing.T) {
@@ -118,6 +121,20 @@ func TestParse_EnvOverridesJSONAndFlags(t *testing.T) {
 	assert.Equal(t, "env:7070", cfg.Address)
 	assert.Equal(t, 30, cfg.ReportInterval)
 	assert.Equal(t, 8, cfg.PollInterval)
+}
+
+func TestParse_GRPCAddressFlagAndEnv(t *testing.T) {
+	clearAgentEnv(t)
+	path := writeAgentJSON(t, `{"grpc_address":"file:3200"}`)
+
+	cfg, err := Parse([]string{"-c", path, "-g", "flag:3300"})
+	require.NoError(t, err)
+	assert.Equal(t, "flag:3300", cfg.GRPCAddress)
+
+	t.Setenv("GRPC_ADDRESS", "env:3400")
+	cfg, err = Parse([]string{"-c", path, "-g", "flag:3300"})
+	require.NoError(t, err)
+	assert.Equal(t, "env:3400", cfg.GRPCAddress)
 }
 
 func TestParse_PartialJSONKeepsDefaults(t *testing.T) {
